@@ -42,7 +42,7 @@ def generate_video(audio_file, output_file):
         "-i", BACKGROUND,
         "-filter_complex",
         (
-            "aformat=channel_layouts=mono,showwavespic=s=1200x1200:colors=gold|0.6,format=rgba,"
+            "aformat=channel_layouts=mono,showwavespic=s=720x720:colors=gold|0.6,format=rgba,"
             "geq='r=255:g=215:b=0:a=if(lte((X-600)*(X-600)+(Y-600)*(Y-600),380*380),255,0)',"
             "scale=1200:1200[wave];"
             "[1][wave]overlay=0:0"
