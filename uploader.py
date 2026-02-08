@@ -12,15 +12,18 @@ BACKGROUND = "assets/1200x1200bf.webp"
 UPLOADED_DB = "uploaded.json"
 PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
+
 def load_uploaded():
     if not os.path.exists(UPLOADED_DB):
         return set()
     with open(UPLOADED_DB, "r") as f:
         return set(json.load(f))
 
+
 def save_uploaded(uploaded):
     with open(UPLOADED_DB, "w") as f:
         json.dump(list(uploaded), f)
+
 
 def download_audio(url, filename):
     r = requests.get(url, stream=True)
@@ -28,6 +31,7 @@ def download_audio(url, filename):
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
+
 
 def generate_video(audio_file, output_file):
     # Circular waveform mask parameters for 720x720
@@ -59,32 +63,12 @@ def generate_video(audio_file, output_file):
 
     subprocess.run(ffmpeg_cmd, check=True)
 
-ffmpeg_cmd = [
-    "ffmpeg",
-    "-i", audio_file,
-    "-loop", "1",
-    "-i", BACKGROUND,
-    "-filter_complex",
-    (
-        "aformat=channel_layouts=mono,"
-        "showwavespic=s=720x720:colors=gold|0.6,"
-        "format=rgba,"
-        "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
-        "scale=720:720[wave];"
-        "[1][wave]overlay=0:0"
-    ),
-    "-c:v", "libx264",
-    "-preset", "medium",
-    "-crf", "18",
-    "-c:a", "aac",
-    "-shortest",
-    output_file
-]
-
-    subprocess.run(ffmpeg_cmd, check=True)
 
 def upload_to_youtube(title, description, video_file):
-    creds = Credentials.from_authorized_user_file("token.json", ["https://www.googleapis.com/auth/youtube.upload"])
+    creds = Credentials.from_authorized_user_file(
+        "token.json",
+        ["https://www.googleapis.com/auth/youtube.upload"]
+    )
     youtube = build("youtube", "v3", credentials=creds)
 
     request_body = {
@@ -124,6 +108,7 @@ def upload_to_youtube(title, description, video_file):
 
     return video_id
 
+
 def main():
     uploaded = load_uploaded()
     feed = feedparser.parse(RSS_FEED)
@@ -152,6 +137,7 @@ def main():
 
         os.remove(audio_file)
         os.remove(video_file)
+
 
 if __name__ == "__main__":
     main()
