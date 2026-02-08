@@ -42,7 +42,7 @@ def generate_video(audio_file, output_file):
         "aformat=channel_layouts=mono,"
         "showwavespic=s=480x480:colors=gold|0.6,"
         "format=rgba,"
-        "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
+        "geq='r=255:g=215:b=0:a=if(lte((X-240)*(X-240)+(Y-240)*(Y-240),150*150),255,0)',"
         "scale=480:480[wave];"
         "[1][wave]overlay=0:0"
     )
