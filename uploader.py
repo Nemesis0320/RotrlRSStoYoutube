@@ -30,25 +30,25 @@ def download_audio(url, filename):
                 f.write(chunk)
 
 def generate_video(audio_file, output_file):
-    # Circular waveform mask parameters
-    # Center: (600, 600)
-    # Radius: ~380px
-    # Semi-transparent gold: rgba(255, 215, 0, 0.6)
+    # Circular waveform mask parameters for 720x720
+    # Center: (360, 360)
+    # Radius: 225px
+
+    filter_complex = (
+        "aformat=channel_layouts=mono,"
+        "showwavespic=s=720x720:colors=gold|0.6,"
+        "format=rgba,"
+        "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
+        "scale=720:720[wave];"
+        "[1][wave]overlay=0:0"
+    )
 
     ffmpeg_cmd = [
         "ffmpeg",
         "-i", audio_file,
         "-loop", "1",
         "-i", BACKGROUND,
-        "-filter_complex",
-        (
-aformat=channel_layouts=mono,
-showwavespic=s=720x720:colors=gold|0.6,
-format=rgba,
-geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',
-scale=720:720[wave];
-[1][wave]overlay=0:0
-        ),
+        "-filter_complex", filter_complex,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "18",
@@ -56,6 +56,30 @@ scale=720:720[wave];
         "-shortest",
         output_file
     ]
+
+    subprocess.run(ffmpeg_cmd, check=True)
+
+ffmpeg_cmd = [
+    "ffmpeg",
+    "-i", audio_file,
+    "-loop", "1",
+    "-i", BACKGROUND,
+    "-filter_complex",
+    (
+        "aformat=channel_layouts=mono,"
+        "showwavespic=s=720x720:colors=gold|0.6,"
+        "format=rgba,"
+        "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
+        "scale=720:720[wave];"
+        "[1][wave]overlay=0:0"
+    ),
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "18",
+    "-c:a", "aac",
+    "-shortest",
+    output_file
+]
 
     subprocess.run(ffmpeg_cmd, check=True)
 
