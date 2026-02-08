@@ -40,10 +40,10 @@ def generate_video(audio_file, output_file):
 
     filter_complex = (
         "aformat=channel_layouts=mono,"
-        "showwavespic=s=720x720:colors=gold|0.6,"
+        "showwavespic=s=480x480:colors=gold|0.6,"
         "format=rgba,"
         "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
-        "scale=720:720[wave];"
+        "scale=480:480[wave];"
         "[1][wave]overlay=0:0"
     )
 
