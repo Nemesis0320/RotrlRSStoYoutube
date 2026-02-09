@@ -249,23 +249,7 @@ def upload_to_youtube_with_retry(title, description, video_file, max_retries=3):
             )
             response = request.execute()
 
-            video_id = response["id"]
-
-            if PLAYLIST_ID:
-                youtube.playlistItems().insert(
-                    part="snippet",
-                    body={
-                        "snippet": {
-                            "playlistId": PLAYLIST_ID,
-                            "resourceId": {
-                                "kind": "youtube#video",
-                                "videoId": video_id
-                            }
-                        }
-                    }
-                ).execute()
-
-            return video_id
+            return response["id"]
 
         except Exception as e:
             last_error = e
@@ -273,6 +257,41 @@ def upload_to_youtube_with_retry(title, description, video_file, max_retries=3):
                 time.sleep(10 * attempt)
             else:
                 raise last_error
+
+
+def youtube_video_exists(video_id):
+    try:
+        creds = Credentials.from_authorized_user_file(
+            "token.json",
+            ["https://www.googleapis.com/auth/youtube.readonly"]
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+        response = youtube.videos().list(
+            part="status",
+            id=video_id
+        ).execute()
+
+        return bool(response.get("items"))
+    except Exception:
+        return False
+
+
+def poll_for_video(video_id, title):
+    for i in range(12):  # 12 checks × 5 seconds = 60 seconds
+        if youtube_video_exists(video_id):
+            return True
+        time.sleep(5)
+
+    send_discord_embed(
+        "YouTube did not confirm video existence",
+        description=(
+            f"YouTube did not acknowledge **{title}** within 60 seconds.\n"
+            "This may indicate processing failure or deletion."
+        ),
+        color=0xE74C3C,
+        thumbnail=False,
+    )
+    return False
 
 
 def download_audio(url, filename, max_retries=3):
@@ -556,16 +575,19 @@ def main():
             seconds = int(split_point % 60)
             timestamp = f"{minutes:02d}:{seconds:02d}"
             return f"\n\n00:00 Part 1\n{timestamp} Part 2\n"
+
         else:
             generate_video(AUDIO_FILE, FINAL_VIDEO)
             return ""
 
+    # Perform initial render
     t_render_start = time.time()
     extra_desc = render_pipeline()
     if extra_desc:
         description += extra_desc
     t_render_end = time.time()
 
+    # Validate final video, with one re-render attempt if needed
     for attempt in range(1, 3):
         ok, diag = validate_final_video(FINAL_VIDEO)
         if ok:
@@ -621,6 +643,89 @@ Diagnostics:
         video_id = upload_to_youtube_with_retry(title, description, FINAL_VIDEO)
         t_upload_end = time.time()
 
+        # Aggressive polling to confirm YouTube acknowledges the video
+        if not poll_for_video(video_id, title):
+            send_discord_embed(
+                "YouTube did not confirm upload",
+                description=(
+                    f"YouTube did not acknowledge **{title}** after initial upload.\n"
+                    "Attempting re-upload."
+                ),
+                color=0xE74C3C,
+                thumbnail=True,
+                ep=ep,
+            )
+
+            # Attempt re-upload of the same validated file
+            video_id = upload_to_youtube_with_retry(title, description, FINAL_VIDEO)
+
+            if not poll_for_video(video_id, title):
+                send_discord_embed(
+                    "Re-upload failed",
+                    description=(
+                        f"YouTube still did not acknowledge **{title}** after re-upload.\n"
+                        "Performing full re-render and upload."
+                    ),
+                    color=0xE74C3C,
+                    thumbnail=True,
+                    ep=ep,
+                )
+
+                # Full re-render
+                t_render_start = time.time()
+                extra_desc = render_pipeline()
+                if extra_desc and extra_desc not in description:
+                    description += extra_desc
+                t_render_end = time.time()
+
+                # Validate again
+                ok, diag = validate_final_video(FINAL_VIDEO)
+                if not ok:
+                    send_discord_embed(
+                        "Final video invalid after full re-render",
+                        description=f"Diagnostics:\n```{diag[:1800]}```",
+                        color=0xE74C3C,
+                        thumbnail=True,
+                        ep=ep,
+                    )
+                    write_summary(f"""
+## Podcast Upload Summary
+
+Upload failed after full re-render
+
+Episode: {title}
+
+Diagnostics:
+{diag}
+""")
+                    return
+
+                # Upload again
+                video_id = upload_to_youtube_with_retry(title, description, FINAL_VIDEO)
+
+                if not poll_for_video(video_id, title):
+                    send_discord_embed(
+                        "Upload failed after full re-render",
+                        description=(
+                            f"YouTube rejected **{title}** even after full re-render.\n"
+                            "Aborting."
+                        ),
+                        color=0xE74C3C,
+                        thumbnail=True,
+                        ep=ep,
+                    )
+                    write_summary(f"""
+## Podcast Upload Summary
+
+Upload failed after full re-render
+
+Episode: {title}
+
+YouTube did not acknowledge the video after multiple attempts.
+""")
+                    return
+
+        # If we reach here, YouTube accepted the video
         url = f"https://youtu.be/{video_id}"
 
         total_time = time.time() - start_run
@@ -660,7 +765,6 @@ Diagnostics:
             ep=ep,
         )
 
-        # Per-run summary
         send_discord_embed(
             "Run Summary",
             description=f"Run completed for **{title}**",
