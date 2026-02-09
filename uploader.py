@@ -16,7 +16,6 @@ PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
 SPLIT_THRESHOLD_SECONDS = 90 * 60  # 90 minutes
 
-# Use RAM disk for all temp files
 TMPDIR = os.environ.get("TMPDIR", "/dev/shm")
 AUDIO_FILE = os.path.join(TMPDIR, "temp.mp3")
 PART1_AUDIO = os.path.join(TMPDIR, "part1.mp3")
@@ -26,8 +25,31 @@ PART2_VIDEO = os.path.join(TMPDIR, "part2.mp4")
 FINAL_VIDEO = os.path.join(TMPDIR, "output.mp4")
 
 
+# -----------------------------
+# Discord Notifications
+# -----------------------------
+def notify_discord(message):
+    url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not url:
+        return
+    try:
+        requests.post(url, json={"content": message})
+    except Exception:
+        pass
+
+
+# -----------------------------
+# GitHub Summary Writer
+# -----------------------------
+def write_summary(text):
+    with open("summary.txt", "w") as f:
+        f.write(text)
+
+
+# -----------------------------
+# Utility Functions
+# -----------------------------
 def clean_description(text):
-    """Strip HTML, decode entities, remove invalid chars, trim length."""
     text = re.sub(r"<[^>]+>", "", text)
     text = unescape(text)
     text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
@@ -67,7 +89,8 @@ def split_audio(audio_file):
 
 
 def generate_video(audio_file, output_file):
-    """Render a 480x480 circular waveform video."""
+    notify_discord(f"🎛 Rendering waveform for `{os.path.basename(audio_file)}`…")
+
     filter_complex = (
         "aformat=channel_layouts=mono,"
         "showwavespic=s=480x480:colors=gold|0.6,"
@@ -97,6 +120,8 @@ def generate_video(audio_file, output_file):
 
 
 def stitch_videos(part1_video, part2_video, output_file):
+    notify_discord("🔗 Stitching video parts…")
+
     list_file = os.path.join(TMPDIR, "concat_list.txt")
     with open(list_file, "w") as f:
         f.write(f"file '{part1_video}'\n")
@@ -111,6 +136,8 @@ def stitch_videos(part1_video, part2_video, output_file):
 
 
 def upload_to_youtube(title, description, video_file):
+    notify_discord(f"📤 Uploading `{title}` to YouTube…")
+
     creds = Credentials.from_authorized_user_file(
         "token.json",
         ["https://www.googleapis.com/auth/youtube.upload"]
@@ -168,6 +195,7 @@ def save_uploaded(uploaded):
 
 
 def download_audio(url, filename):
+    notify_discord(f"⬇️ Downloading audio…")
     r = requests.get(url, stream=True)
     r.raise_for_status()
     with open(filename, "wb") as f:
@@ -191,7 +219,6 @@ def main():
 
     episodes = list(reversed(feed.entries))
 
-    # Process only ONE new episode per run
     for ep in episodes:
         guid = ep.get("guid", ep.link)
         if guid in uploaded:
@@ -202,12 +229,16 @@ def main():
         description = clean_description(raw_description)
         audio_url = ep.enclosures[0].href
 
+        notify_discord(f"🎬 Starting upload: **{title}**")
+
         cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
 
         download_audio(audio_url, AUDIO_FILE)
         duration = get_duration(AUDIO_FILE)
 
         if duration > SPLIT_THRESHOLD_SECONDS:
+            notify_discord("✂️ Episode is long — splitting into two parts…")
+
             part1_audio, part2_audio, split_point = split_audio(AUDIO_FILE)
 
             generate_video(part1_audio, PART1_VIDEO)
@@ -224,7 +255,29 @@ def main():
         else:
             generate_video(AUDIO_FILE, FINAL_VIDEO)
 
-        upload_to_youtube(title, description, FINAL_VIDEO)
+        try:
+            video_id = upload_to_youtube(title, description, FINAL_VIDEO)
+            url = f"https://youtu.be/{video_id}"
+            notify_discord(f"✅ Uploaded **{title}** — {url}")
+
+            write_summary(f"""
+## Podcast Upload Summary
+
+**Episode:** {title}  
+**Uploaded:** {url}  
+**Status:** Success  
+""")
+
+        except Exception as e:
+            notify_discord(f"❌ Upload failed: **{title}**\nError: `{e}`")
+            write_summary(f"""
+## Podcast Upload Summary
+
+❌ Upload failed  
+**Episode:** {title}  
+**Error:** {e}  
+""")
+            raise
 
         uploaded.add(guid)
         save_uploaded(uploaded)
@@ -232,6 +285,10 @@ def main():
         cleanup_files(AUDIO_FILE, FINAL_VIDEO)
 
         break  # Only one episode per run
+
+    else:
+        notify_discord("✔️ No new episodes found. Pipeline idle.")
+        write_summary("## Podcast Upload Summary\n\nNo new episodes found.\n")
 
 
 if __name__ == "__main__":
