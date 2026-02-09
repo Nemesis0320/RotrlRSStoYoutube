@@ -856,3 +856,119 @@ YouTube did not acknowledge the video after multiple attempts.
         download_time = t_download_end - t_download_start
         render_time = t_render_end - t_render_start
         upload_time = t_upload_end - t_upload_start
+        # Update daily stats
+        daily_stats["episodes_uploaded_today"] = daily_stats.get("episodes_uploaded_today", 0) + 1
+        daily_stats["total_runtime_today"] = daily_stats.get("total_runtime_today", 0.0) + duration
+        save_daily_stats(daily_stats)
+
+        queue_remaining = queue_length - 1
+        eta_hours_remaining = queue_remaining * RUN_INTERVAL_HOURS
+
+        success_fields = [
+            ("Duration", format_seconds(duration), True),
+            ("Split", "Yes" if long_episode else "No", True),
+            ("Download time", format_seconds(download_time), True),
+            ("Render time", format_seconds(render_time), True),
+            ("Upload time", format_seconds(upload_time), True),
+            ("Total run time", format_seconds(total_time), True),
+            ("Queue remaining", str(queue_remaining), True),
+            ("Estimated completion", f"~{eta_hours_remaining:.1f} hours", True),
+        ]
+        if season_num is not None and episode_num is not None:
+            success_fields.insert(0, ("Season", str(season_num), True))
+            success_fields.insert(1, ("Episode", str(episode_num), True))
+            success_fields.insert(2, ("Absolute index", str(absolute_index), True))
+
+        send_discord_embed(
+            "Episode uploaded",
+            description=f"**{title}**\n{url}",
+            color=0x2ECC71,
+            fields=success_fields,
+            thumbnail=True,
+            ep=ep,
+        )
+
+        send_discord_embed(
+            "Run Summary",
+            description=f"Run completed for **{title}**",
+            color=0x2980B9,
+            fields=[
+                ("Duration", format_seconds(duration), True),
+                ("Split", "Yes" if long_episode else "No", True),
+                ("Download time", format_seconds(download_time), True),
+                ("Render time", format_seconds(render_time), True),
+                ("Upload time", format_seconds(upload_time), True),
+                ("Total run time", format_seconds(total_time), True),
+                ("Queue remaining", str(queue_remaining), True),
+            ],
+            thumbnail=True,
+            ep=ep,
+        )
+
+        write_summary(f"""
+## Podcast Upload Summary
+
+Episode: {title}
+URL: {url}
+
+Duration: {format_seconds(duration)}
+Split: {"Yes" if long_episode else "No"}
+
+Download time: {format_seconds(download_time)}
+Render time: {format_seconds(render_time)}
+Upload time: {format_seconds(upload_time)}
+Total run time: {format_seconds(total_time)}
+
+Queue remaining: {queue_remaining}
+
+Status: Success
+""")
+
+    except Exception as e:
+        t_upload_end = time.time()
+        upload_time = t_upload_end - t_upload_start
+
+        daily_stats["failures_today"] = daily_stats.get("failures_today", 0) + 1
+        save_daily_stats(daily_stats)
+
+        failure_fields = [
+            ("Error", f"`{e}`", False),
+            ("Duration", format_seconds(duration), True),
+            ("Upload time", format_seconds(upload_time), True),
+            ("Queue remaining", str(queue_length), True),
+        ]
+        if season_num is not None and episode_num is not None:
+            failure_fields.insert(0, ("Season", str(season_num), True))
+            failure_fields.insert(1, ("Episode", str(episode_num), True))
+            failure_fields.insert(2, ("Absolute index", str(absolute_index), True))
+
+        send_discord_embed(
+            "Upload failed",
+            description=f"**{title}**",
+            color=0xE74C3C,
+            fields=failure_fields,
+            thumbnail=True,
+            ep=ep,
+        )
+
+        write_summary(f"""
+## Podcast Upload Summary
+
+Upload failed
+
+Episode: {title}
+Error: {e}
+
+Duration: {format_seconds(duration)}
+Upload time: {format_seconds(upload_time)}
+""")
+        raise
+
+    uploaded.add(guid)
+    save_uploaded(uploaded)
+
+    cleanup_files(AUDIO_FILE, FINAL_VIDEO)
+
+
+if __name__ == "__main__":
+    main()
