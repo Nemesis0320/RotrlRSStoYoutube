@@ -135,7 +135,7 @@ def run_cmd(cmd):
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8", "ignore")
         log("CMD OK:", " ".join(cmd))
-        log("CMD OUT:", out[:1000])
+        log("CMD OUT:", out)
         return out
     except subprocess.CalledProcessError as e:
         out = e.output.decode("utf-8", "ignore")
@@ -241,7 +241,11 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
-    run_cmd(["ffmpeg", "-h", "filter=v360"])
+
+    # TEMP: print full v360 help (no truncation)
+    v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
+    log("V360 HELP FULL:", v360_help)
+
     cmd = [
         "ffmpeg",
         "-y",
