@@ -241,7 +241,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
-
+    run_cmd(["ffmpeg", "-h", "filter=v360"])
     cmd = [
         "ffmpeg",
         "-y",
