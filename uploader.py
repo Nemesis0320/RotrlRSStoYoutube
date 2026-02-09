@@ -6,7 +6,7 @@ import feedparser
 import requests
 import subprocess
 from html import unescape
-from datetime import datetime, timezone, date
+from datetime import date
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -20,8 +20,8 @@ UPLOADED_DB = "uploaded.json"
 DAILY_STATS_DB = "daily_stats.json"
 PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
-SPLIT_THRESHOLD_SECONDS = 90 * 60  # 90 minutes
-RUN_INTERVAL_HOURS = 2            # for ETA calculations
+SPLIT_THRESHOLD_SECONDS = 90 * 60
+RUN_INTERVAL_HOURS = 2
 
 TMPDIR = os.environ.get("TMPDIR", "/dev/shm")
 AUDIO_FILE = os.path.join(TMPDIR, "temp.mp3")
@@ -31,7 +31,6 @@ PART1_VIDEO = os.path.join(TMPDIR, "part1.mp4")
 PART2_VIDEO = os.path.join(TMPDIR, "part2.mp4")
 FINAL_VIDEO = os.path.join(TMPDIR, "output.mp4")
 
-# Fallback thumbnail (GitHub raw URL)
 FALLBACK_THUMBNAIL_URL = (
     "https://raw.githubusercontent.com/"
     "Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
@@ -42,12 +41,10 @@ FALLBACK_THUMBNAIL_URL = (
 # Discord helpers
 # -----------------------------
 def build_thumbnail(ep):
-    # Try RSS episode image first
     url = None
     image = getattr(ep, "image", None)
     if image and getattr(image, "href", None):
         url = image.href
-    # Fallback to static background
     if not url:
         url = FALLBACK_THUMBNAIL_URL
     return {"url": url}
@@ -91,7 +88,7 @@ def heartbeat(message, queue_length=None, next_title=None, eta_hours=None):
         fields.append(("Estimated completion", f"~{eta_hours:.1f} hours", True))
 
     send_discord_embed(
-        "🫀 Heartbeat",
+        "Heartbeat",
         description=message,
         color=0x2ECC71,
         fields=fields,
@@ -119,21 +116,21 @@ def clean_description(text):
 
 def run_cmd(cmd):
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return result.stdout.strip()
+    return result.stdout.strip(), result.stderr.strip()
 
 
-def get_duration(audio_file):
+def get_duration(media_file):
     cmd = [
         "ffprobe", "-v", "error", "-show_entries",
         "format=duration", "-of",
-        "default=noprint_wrappers=1:nokey=1", audio_file
+        "default=noprint_wrappers=1:nokey=1", media_file
     ]
-    output = run_cmd(cmd)
-    return float(output)
+    out, err = run_cmd(cmd)
+    return float(out), err
 
 
 def split_audio(audio_file):
-    duration = get_duration(audio_file)
+    duration, _ = get_duration(audio_file)
     half = duration / 2
 
     subprocess.run([
@@ -151,7 +148,7 @@ def split_audio(audio_file):
 
 def generate_video(audio_file, output_file):
     send_discord_embed(
-        "🎛 Rendering waveform",
+        "Rendering waveform",
         description=f"Source: `{os.path.basename(audio_file)}`",
         color=0xF1C40F,
         thumbnail=False,
@@ -187,7 +184,7 @@ def generate_video(audio_file, output_file):
 
 def stitch_videos(part1_video, part2_video, output_file):
     send_discord_embed(
-        "🔗 Stitching video parts",
+        "Stitching video parts",
         description="Combining part 1 and part 2 into final video.",
         color=0x9B59B6,
         thumbnail=False,
@@ -198,10 +195,18 @@ def stitch_videos(part1_video, part2_video, output_file):
         f.write(f"file '{part1_video}'\n")
         f.write(f"file '{part2_video}'\n")
 
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", list_file, "-c", "copy", output_file
-    ], check=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", list_file,
+        "-c:v", "libx264",
+        "-preset", "faster",
+        "-crf", "20",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        output_file
+    ]
+    subprocess.run(cmd, check=True)
 
     os.remove(list_file)
 
@@ -213,7 +218,7 @@ def upload_to_youtube_with_retry(title, description, video_file, max_retries=3):
     while attempt < max_retries:
         attempt += 1
         send_discord_embed(
-            "📤 Uploading to YouTube",
+            "Uploading to YouTube",
             description=f"Attempt {attempt} for **{title}**",
             color=0x3498DB,
             thumbnail=False,
@@ -277,7 +282,7 @@ def download_audio(url, filename, max_retries=3):
     while attempt < max_retries:
         attempt += 1
         send_discord_embed(
-            "⬇️ Downloading audio",
+            "Downloading audio",
             description=f"Attempt {attempt}\nURL: {url}",
             color=0x1ABC9C,
             thumbnail=False,
@@ -319,10 +324,6 @@ def format_seconds(sec):
 
 
 def parse_episode_numbers(title):
-    """
-    Parse 'Season X - Episode Y' from title.
-    Returns (season, episode) or (None, None).
-    """
     m = re.search(r"Season\s+(\d+)\s*-\s*Episode\s+(\d+)", title, re.IGNORECASE)
     if not m:
         return None, None
@@ -362,20 +363,17 @@ def save_daily_stats(stats):
 
 
 def maybe_send_daily_digest(stats, queue_length):
-    # Compare stored date with today (UTC)
     today_str = date.today().isoformat()
     last = stats.get("last_digest_date")
 
     if last == today_str:
-        return  # already sent today
+        return
 
-    # Only send if we have any activity
     episodes = stats.get("episodes_uploaded_today", 0)
     runtime = stats.get("total_runtime_today", 0.0)
     failures = stats.get("failures_today", 0)
 
     if episodes == 0 and failures == 0:
-        # Still update date so we don't spam empty digests
         stats["last_digest_date"] = today_str
         save_daily_stats(stats)
         return
@@ -383,7 +381,7 @@ def maybe_send_daily_digest(stats, queue_length):
     eta_hours = queue_length * RUN_INTERVAL_HOURS
 
     send_discord_embed(
-        "📅 Daily Digest",
+        "Daily Digest",
         description="Summary of pipeline activity for today.",
         color=0x8E44AD,
         fields=[
@@ -405,6 +403,60 @@ def maybe_send_daily_digest(stats, queue_length):
 
 
 # -----------------------------
+# Final video validation
+# -----------------------------
+def validate_final_video(path):
+    diagnostics = []
+
+    if not os.path.exists(path):
+        diagnostics.append("File does not exist.")
+        return False, "\n".join(diagnostics)
+
+    try:
+        duration, dur_err = get_duration(path)
+    except Exception as e:
+        diagnostics.append(f"ffprobe duration error: {e}")
+        return False, "\n".join(diagnostics)
+
+    diagnostics.append(f"Reported duration: {duration:.2f} seconds")
+    if dur_err:
+        diagnostics.append(f"ffprobe stderr (duration): {dur_err[:400]}")
+
+    if not (60 <= duration <= 12 * 3600):
+        diagnostics.append("Duration outside safe bounds (60s–12h).")
+        return False, "\n".join(diagnostics)
+
+    cmd_streams = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "stream=codec_type",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        path,
+    ]
+    out, err = run_cmd(cmd_streams)
+    streams = [line.strip() for line in out.splitlines() if line.strip()]
+    diagnostics.append(f"Streams detected: {streams}")
+    if err:
+        diagnostics.append(f"ffprobe stderr (streams): {err[:400]}")
+
+    if "video" not in streams or "audio" not in streams:
+        diagnostics.append("Missing required audio/video streams.")
+        return False, "\n".join(diagnostics)
+
+    cmd_check = [
+        "ffmpeg", "-v", "error",
+        "-i", path,
+        "-f", "null", "-"
+    ]
+    _, ff_err = run_cmd(cmd_check)
+    if ff_err:
+        diagnostics.append(f"ffmpeg container check errors:\n{ff_err[:800]}")
+        return False, "\n".join(diagnostics)
+
+    diagnostics.append("Validation passed.")
+    return True, "\n".join(diagnostics)
+
+
+# -----------------------------
 # Main pipeline
 # -----------------------------
 def main():
@@ -412,27 +464,29 @@ def main():
     daily_stats = load_daily_stats()
 
     feed = feedparser.parse(RSS_FEED)
-    episodes = list(reversed(feed.entries))
 
-    # Determine queue length and next episode for heartbeat
+    episodes = sorted(
+        feed.entries,
+        key=lambda e: e.get("published_parsed")
+    )
+
     remaining = [ep for ep in episodes if ep.get("guid", ep.link) not in uploaded]
     queue_length = len(remaining)
     next_title = remaining[0].title if remaining else "None"
     eta_hours = queue_length * RUN_INTERVAL_HOURS
 
     heartbeat(
-        "Pipeline run started. Checking for new episodes…",
+        "Pipeline run started. Checking for new episodes.",
         queue_length=queue_length,
         next_title=next_title,
         eta_hours=eta_hours,
     )
 
-    # Daily digest check (once per day)
     maybe_send_daily_digest(daily_stats, queue_length)
 
     if not remaining:
         send_discord_embed(
-            "✔️ No new episodes",
+            "No new episodes",
             description="No new episodes found. Pipeline idle until next run.",
             color=0x95A5A6,
             thumbnail=False,
@@ -442,7 +496,6 @@ def main():
 
     start_run = time.time()
 
-    # Process only ONE new episode per run
     ep = remaining[0]
     guid = ep.get("guid", ep.link)
     title = ep.title
@@ -451,7 +504,7 @@ def main():
     audio_url = ep.enclosures[0].href
 
     season_num, episode_num = parse_episode_numbers(title)
-    absolute_index = episodes.index(ep) + 1  # 1-based index
+    absolute_index = episodes.index(ep) + 1
 
     fields = [
         ("GUID", guid, False),
@@ -464,7 +517,7 @@ def main():
         fields.insert(1, ("Episode", str(episode_num), True))
 
     send_discord_embed(
-        "🎬 Starting episode processing",
+        "Starting episode processing",
         description=f"**{title}**",
         color=0xE67E22,
         fields=fields,
@@ -478,37 +531,91 @@ def main():
     download_audio(audio_url, AUDIO_FILE)
     t_download_end = time.time()
 
-    duration = get_duration(AUDIO_FILE)
+    duration, dur_err = get_duration(AUDIO_FILE)
     long_episode = duration > SPLIT_THRESHOLD_SECONDS
 
+    def render_pipeline():
+        cleanup_files(PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
+
+        if long_episode:
+            send_discord_embed(
+                "Long episode detected",
+                description=f"Duration: {format_seconds(duration)}\nSplitting into two parts.",
+                color=0xC0392B,
+                thumbnail=False,
+            )
+
+            part1_audio, part2_audio, split_point = split_audio(AUDIO_FILE)
+
+            generate_video(part1_audio, PART1_VIDEO)
+            generate_video(part2_audio, PART2_VIDEO)
+
+            stitch_videos(PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
+
+            minutes = int(split_point // 60)
+            seconds = int(split_point % 60)
+            timestamp = f"{minutes:02d}:{seconds:02d}"
+            return f"\n\n00:00 Part 1\n{timestamp} Part 2\n"
+        else:
+            generate_video(AUDIO_FILE, FINAL_VIDEO)
+            return ""
+
     t_render_start = time.time()
-
-    if long_episode:
-        send_discord_embed(
-            "✂️ Long episode detected",
-            description=f"Duration: {format_seconds(duration)}\nSplitting into two parts.",
-            color=0xC0392B,
-            thumbnail=False,
-        )
-
-        part1_audio, part2_audio, split_point = split_audio(AUDIO_FILE)
-
-        generate_video(part1_audio, PART1_VIDEO)
-        generate_video(part2_audio, PART2_VIDEO)
-
-        stitch_videos(PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
-
-        minutes = int(split_point // 60)
-        seconds = int(split_point % 60)
-        timestamp = f"{minutes:02d}:{seconds:02d}"
-        description += f"\n\n00:00 Part 1\n{timestamp} Part 2\n"
-
-        cleanup_files(part1_audio, part2_audio, PART1_VIDEO, PART2_VIDEO)
-    else:
-        generate_video(AUDIO_FILE, FINAL_VIDEO)
-
+    extra_desc = render_pipeline()
+    if extra_desc:
+        description += extra_desc
     t_render_end = time.time()
 
+    for attempt in range(1, 3):
+        ok, diag = validate_final_video(FINAL_VIDEO)
+        if ok:
+            break
+
+        send_discord_embed(
+            "Final video failed validation",
+            description=(
+                f"Validation attempt {attempt} failed for **{title}**.\n"
+                f"Diagnostics:\n```{diag[:1800]}```\n"
+                + ("Re-rendering video and trying again." if attempt == 1 else "No more attempts left.")
+            ),
+            color=0xE74C3C,
+            thumbnail=True,
+            ep=ep,
+        )
+
+        if attempt == 1:
+            # Re-render once
+            t_render_start = time.time()
+            extra_desc = render_pipeline()
+            if extra_desc and extra_desc not in description:
+                description += extra_desc
+            t_render_end = time.time()
+        else:
+            # Give up after second failure
+            write_summary(f"""
+## Podcast Upload Summary
+
+Final video failed validation after 2 attempts
+
+Episode: {title}
+
+Diagnostics:
+{diag}
+""")
+            send_discord_embed(
+                "Final video validation failed",
+                description=(
+                    f"Validation failed twice for **{title}**.\n"
+                    f"Diagnostics:\n```{diag[:1800]}```\n"
+                    "Aborting upload."
+                ),
+                color=0xE74C3C,
+                thumbnail=True,
+                ep=ep,
+            )
+            return
+
+    # Upload phase
     t_upload_start = time.time()
     try:
         video_id = upload_to_youtube_with_retry(title, description, FINAL_VIDEO)
@@ -545,7 +652,7 @@ def main():
             success_fields.insert(2, ("Absolute index", str(absolute_index), True))
 
         send_discord_embed(
-            "✅ Episode uploaded",
+            "Episode uploaded",
             description=f"**{title}**\n{url}",
             color=0x2ECC71,
             fields=success_fields,
@@ -553,9 +660,9 @@ def main():
             ep=ep,
         )
 
-        # Per-run summary embed
+        # Per-run summary
         send_discord_embed(
-            "📊 Run Summary",
+            "Run Summary",
             description=f"Run completed for **{title}**",
             color=0x2980B9,
             fields=[
@@ -574,20 +681,20 @@ def main():
         write_summary(f"""
 ## Podcast Upload Summary
 
-**Episode:** {title}  
-**URL:** {url}  
+Episode: {title}
+URL: {url}
 
-**Duration:** {format_seconds(duration)}  
-**Split:** {"Yes" if long_episode else "No"}  
+Duration: {format_seconds(duration)}
+Split: {"Yes" if long_episode else "No"}
 
-**Download time:** {format_seconds(download_time)}  
-**Render time:** {format_seconds(render_time)}  
-**Upload time:** {format_seconds(upload_time)}  
-**Total run time:** {format_seconds(total_time)}  
+Download time: {format_seconds(download_time)}
+Render time: {format_seconds(render_time)}
+Upload time: {format_seconds(upload_time)}
+Total run time: {format_seconds(total_time)}
 
-**Queue remaining:** {queue_remaining}  
+Queue remaining: {queue_remaining}
 
-**Status:** Success  
+Status: Success
 """)
 
     except Exception as e:
@@ -609,7 +716,7 @@ def main():
             failure_fields.insert(2, ("Absolute index", str(absolute_index), True))
 
         send_discord_embed(
-            "❌ Upload failed",
+            "Upload failed",
             description=f"**{title}**",
             color=0xE74C3C,
             fields=failure_fields,
@@ -620,13 +727,13 @@ def main():
         write_summary(f"""
 ## Podcast Upload Summary
 
-❌ Upload failed  
+Upload failed
 
-**Episode:** {title}  
-**Error:** {e}  
+Episode: {title}
+Error: {e}
 
-**Duration:** {format_seconds(duration)}  
-**Upload time:** {format_seconds(upload_time)}  
+Duration: {format_seconds(duration)}
+Upload time: {format_seconds(upload_time)}
 """)
         raise
 
