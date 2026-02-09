@@ -216,8 +216,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
         [wave_clip_raw]geq=
-            lum='if(lum(X,Y)/255 > 0.90, lum(X,Y), 0)':
-            a='if(lum(X,Y)/255 > 0.90, 255, 0)'
+            lum='if(lum(X,Y)/255>0.90,lum(X,Y),0)'
+            a='if(lum(X,Y)/255>0.90,255,0)'
         [wave_clip_masked];
 
         [wave_inner]copy[polar_inner];
