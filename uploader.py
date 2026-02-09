@@ -16,30 +16,30 @@ PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
 SPLIT_THRESHOLD_SECONDS = 90 * 60  # 90 minutes
 
+# Use RAM disk for all temp files
+TMPDIR = os.environ.get("TMPDIR", "/dev/shm")
+AUDIO_FILE = os.path.join(TMPDIR, "temp.mp3")
+PART1_AUDIO = os.path.join(TMPDIR, "part1.mp3")
+PART2_AUDIO = os.path.join(TMPDIR, "part2.mp3")
+PART1_VIDEO = os.path.join(TMPDIR, "part1.mp4")
+PART2_VIDEO = os.path.join(TMPDIR, "part2.mp4")
+FINAL_VIDEO = os.path.join(TMPDIR, "output.mp4")
+
 
 def clean_description(text):
     """Strip HTML, decode entities, remove invalid chars, trim length."""
-    # Remove HTML tags
     text = re.sub(r"<[^>]+>", "", text)
-
-    # Decode HTML entities (&amp;, &quot;, etc.)
     text = unescape(text)
-
-    # Remove control characters
     text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
-
-    # Trim to YouTube's max allowed length
     return text[:4900]
 
 
 def run_cmd(cmd):
-    """Run a shell command and return output."""
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return result.stdout.strip()
 
 
 def get_duration(audio_file):
-    """Return duration in seconds using ffprobe."""
     cmd = [
         "ffprobe", "-v", "error", "-show_entries",
         "format=duration", "-of",
@@ -50,48 +50,46 @@ def get_duration(audio_file):
 
 
 def split_audio(audio_file):
-    """Split audio into two halves and return filenames + split timestamp."""
     duration = get_duration(audio_file)
     half = duration / 2
 
-    part1 = "part1.mp3"
-    part2 = "part2.mp3"
-
-    # First half
     subprocess.run([
-        "ffmpeg", "-i", audio_file, "-t", str(half), "-acodec", "copy", part1
+        "ffmpeg", "-y", "-i", audio_file, "-t", str(half),
+        "-acodec", "copy", PART1_AUDIO
     ], check=True)
 
-    # Second half
     subprocess.run([
-        "ffmpeg", "-i", audio_file, "-ss", str(half), "-acodec", "copy", part2
+        "ffmpeg", "-y", "-i", audio_file, "-ss", str(half),
+        "-acodec", "copy", PART2_AUDIO
     ], check=True)
 
-    return part1, part2, half
+    return PART1_AUDIO, PART2_AUDIO, half
 
 
 def generate_video(audio_file, output_file):
-    """Render a 720x720 circular waveform video."""
+    """Render a 480x480 circular waveform video."""
     filter_complex = (
         "aformat=channel_layouts=mono,"
-        "showwavespic=s=720x720:colors=gold|0.6,"
+        "showwavespic=s=480x480:colors=gold|0.6,"
         "format=rgba,"
-        "geq='r=255:g=215:b=0:a=if(lte((X-360)*(X-360)+(Y-360)*(Y-360),225*225),255,0)',"
-        "scale=720:720[wave];"
+        "geq='r=255:g=215:b=0:a=if(lte((X-240)*(X-240)+(Y-240)*(Y-240),150*150),255,0)',"
+        "scale=480:480[wave];"
         "[1][wave]overlay=0:0"
     )
 
     ffmpeg_cmd = [
         "ffmpeg",
+        "-y",
         "-i", audio_file,
         "-loop", "1",
         "-i", BACKGROUND,
         "-filter_complex", filter_complex,
         "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
+        "-preset", "faster",
+        "-crf", "20",
         "-c:a", "aac",
         "-shortest",
+        "-movflags", "+faststart",
         output_file
     ]
 
@@ -99,14 +97,13 @@ def generate_video(audio_file, output_file):
 
 
 def stitch_videos(part1_video, part2_video, output_file):
-    """Stitch two videos using concat demuxer."""
-    list_file = "concat_list.txt"
+    list_file = os.path.join(TMPDIR, "concat_list.txt")
     with open(list_file, "w") as f:
         f.write(f"file '{part1_video}'\n")
         f.write(f"file '{part2_video}'\n")
 
     subprocess.run([
-        "ffmpeg", "-f", "concat", "-safe", "0",
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
         "-i", list_file, "-c", "copy", output_file
     ], check=True)
 
@@ -172,10 +169,20 @@ def save_uploaded(uploaded):
 
 def download_audio(url, filename):
     r = requests.get(url, stream=True)
+    r.raise_for_status()
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
+
+
+def cleanup_files(*paths):
+    for p in paths:
+        if p and os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
 
 def main():
@@ -184,63 +191,47 @@ def main():
 
     episodes = list(reversed(feed.entries))
 
+    # Process only ONE new episode per run
     for ep in episodes:
         guid = ep.get("guid", ep.link)
         if guid in uploaded:
             continue
 
         title = ep.title
-
         raw_description = ep.get("description", "")
         description = clean_description(raw_description)
-
         audio_url = ep.enclosures[0].href
 
-        audio_file = "temp.mp3"
-        final_video = "output.mp4"
+        cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
 
-        download_audio(audio_url, audio_file)
-        duration = get_duration(audio_file)
+        download_audio(audio_url, AUDIO_FILE)
+        duration = get_duration(AUDIO_FILE)
 
         if duration > SPLIT_THRESHOLD_SECONDS:
-            # Split
-            part1_audio, part2_audio, split_point = split_audio(audio_file)
+            part1_audio, part2_audio, split_point = split_audio(AUDIO_FILE)
 
-            # Render each half
-            part1_video = "part1.mp4"
-            part2_video = "part2.mp4"
-            generate_video(part1_audio, part1_video)
-            generate_video(part2_audio, part2_video)
+            generate_video(part1_audio, PART1_VIDEO)
+            generate_video(part2_audio, PART2_VIDEO)
 
-            # Stitch
-            stitch_videos(part1_video, part2_video, final_video)
+            stitch_videos(PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
 
-            # Add chapter markers
             minutes = int(split_point // 60)
             seconds = int(split_point % 60)
             timestamp = f"{minutes:02d}:{seconds:02d}"
-
             description += f"\n\n00:00 Part 1\n{timestamp} Part 2\n"
 
-            # Cleanup
-            for f in [part1_audio, part2_audio, part1_video, part2_video]:
-                if os.path.exists(f):
-                    os.remove(f)
-
+            cleanup_files(part1_audio, part2_audio, PART1_VIDEO, PART2_VIDEO)
         else:
-            # No split needed
-            generate_video(audio_file, final_video)
+            generate_video(AUDIO_FILE, FINAL_VIDEO)
 
-        upload_to_youtube(title, description, final_video)
+        upload_to_youtube(title, description, FINAL_VIDEO)
 
         uploaded.add(guid)
         save_uploaded(uploaded)
 
-        # Cleanup
-        if os.path.exists(audio_file):
-            os.remove(audio_file)
-        if os.path.exists(final_video):
-            os.remove(final_video)
+        cleanup_files(AUDIO_FILE, FINAL_VIDEO)
+
+        break  # Only one episode per run
 
 
 if __name__ == "__main__":
