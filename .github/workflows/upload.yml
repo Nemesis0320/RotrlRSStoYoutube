@@ -1,13 +1,23 @@
 name: Upload Podcast Episodes
 
 on:
-  workflow_dispatch:   # Manual trigger only
+  workflow_dispatch:
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Free disk space
+        run: |
+          echo "Before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          echo "After cleanup:"
+          df -h
+
       - name: Checkout repo
         uses: actions/checkout@v3
 
@@ -22,14 +32,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # DECODE THE BASE64 SECRET INTO token.json
       - name: Add YouTube credentials
         run: echo "${{ secrets.YOUTUBE_TOKEN_JSON_B64 }}" | base64 --decode > token.json
 
-      - name: Run uploader
+      - name: Debug token.json
+        run: |
+          echo "----- token.json -----"
+          cat token.json
+          echo "----------------------"
+
+      - name: Run uploader (one episode per run, RAM temp)
         env:
           YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
-        run: python3 uploader.py
+        run: |
+          export TMPDIR=/dev/shm
+          python3 uploader.py
 
       - name: Commit uploaded.json
         run: |
