@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import feedparser
 import requests
 import subprocess
@@ -28,14 +29,33 @@ FINAL_VIDEO = os.path.join(TMPDIR, "output.mp4")
 # -----------------------------
 # Discord Notifications
 # -----------------------------
-def notify_discord(message):
+def send_discord_embed(title, description=None, color=0x5865F2, fields=None):
     url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not url:
         return
+    embed = {
+        "title": title,
+        "description": description or "",
+        "color": color,
+    }
+    if fields:
+        embed["fields"] = [
+            {"name": name, "value": value, "inline": inline}
+            for (name, value, inline) in fields
+        ]
+    payload = {"embeds": [embed]}
     try:
-        requests.post(url, json={"content": message})
+        requests.post(url, json=payload, timeout=10)
     except Exception:
         pass
+
+
+def heartbeat(message="Pipeline run started"):
+    send_discord_embed(
+        "🫀 Heartbeat",
+        description=message,
+        color=0x2ECC71,
+    )
 
 
 # -----------------------------
@@ -89,7 +109,11 @@ def split_audio(audio_file):
 
 
 def generate_video(audio_file, output_file):
-    notify_discord(f"🎛 Rendering waveform for `{os.path.basename(audio_file)}`…")
+    send_discord_embed(
+        "🎛 Rendering waveform",
+        description=f"Source: `{os.path.basename(audio_file)}`",
+        color=0xF1C40F,
+    )
 
     filter_complex = (
         "aformat=channel_layouts=mono,"
@@ -120,7 +144,11 @@ def generate_video(audio_file, output_file):
 
 
 def stitch_videos(part1_video, part2_video, output_file):
-    notify_discord("🔗 Stitching video parts…")
+    send_discord_embed(
+        "🔗 Stitching video parts",
+        description="Combining part 1 and part 2 into final video.",
+        color=0x9B59B6,
+    )
 
     list_file = os.path.join(TMPDIR, "concat_list.txt")
     with open(list_file, "w") as f:
@@ -135,51 +163,67 @@ def stitch_videos(part1_video, part2_video, output_file):
     os.remove(list_file)
 
 
-def upload_to_youtube(title, description, video_file):
-    notify_discord(f"📤 Uploading `{title}` to YouTube…")
+def upload_to_youtube_with_retry(title, description, video_file, max_retries=3):
+    attempt = 0
+    last_error = None
 
-    creds = Credentials.from_authorized_user_file(
-        "token.json",
-        ["https://www.googleapis.com/auth/youtube.upload"]
-    )
-    youtube = build("youtube", "v3", credentials=creds)
+    while attempt < max_retries:
+        attempt += 1
+        send_discord_embed(
+            "📤 Uploading to YouTube",
+            description=f"Attempt {attempt} for **{title}**",
+            color=0x3498DB,
+        )
+        try:
+            creds = Credentials.from_authorized_user_file(
+                "token.json",
+                ["https://www.googleapis.com/auth/youtube.upload"]
+            )
+            youtube = build("youtube", "v3", credentials=creds)
 
-    request_body = {
-        "snippet": {
-            "title": title,
-            "description": description,
-            "categoryId": "22"
-        },
-        "status": {
-            "privacyStatus": "public"
-        }
-    }
-
-    media = MediaFileUpload(video_file, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=request_body,
-        media_body=media
-    )
-    response = request.execute()
-
-    video_id = response["id"]
-
-    if PLAYLIST_ID:
-        youtube.playlistItems().insert(
-            part="snippet",
-            body={
+            request_body = {
                 "snippet": {
-                    "playlistId": PLAYLIST_ID,
-                    "resourceId": {
-                        "kind": "youtube#video",
-                        "videoId": video_id
-                    }
+                    "title": title,
+                    "description": description,
+                    "categoryId": "22"
+                },
+                "status": {
+                    "privacyStatus": "public"
                 }
             }
-        ).execute()
 
-    return video_id
+            media = MediaFileUpload(video_file, chunksize=-1, resumable=True)
+            request = youtube.videos().insert(
+                part="snippet,status",
+                body=request_body,
+                media_body=media
+            )
+            response = request.execute()
+
+            video_id = response["id"]
+
+            if PLAYLIST_ID:
+                youtube.playlistItems().insert(
+                    part="snippet",
+                    body={
+                        "snippet": {
+                            "playlistId": PLAYLIST_ID,
+                            "resourceId": {
+                                "kind": "youtube#video",
+                                "videoId": video_id
+                            }
+                        }
+                    }
+                ).execute()
+
+            return video_id
+
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                time.sleep(10 * attempt)
+            else:
+                raise last_error
 
 
 def load_uploaded():
@@ -194,14 +238,31 @@ def save_uploaded(uploaded):
         json.dump(list(uploaded), f)
 
 
-def download_audio(url, filename):
-    notify_discord(f"⬇️ Downloading audio…")
-    r = requests.get(url, stream=True)
-    r.raise_for_status()
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+def download_audio(url, filename, max_retries=3):
+    attempt = 0
+    last_error = None
+
+    while attempt < max_retries:
+        attempt += 1
+        send_discord_embed(
+            "⬇️ Downloading audio",
+            description=f"Attempt {attempt}\nURL: {url}",
+            color=0x1ABC9C,
+        )
+        try:
+            r = requests.get(url, stream=True, timeout=60)
+            r.raise_for_status()
+            with open(filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            return
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                time.sleep(5 * attempt)
+            else:
+                raise last_error
 
 
 def cleanup_files(*paths):
@@ -213,11 +274,26 @@ def cleanup_files(*paths):
                 pass
 
 
+def format_seconds(sec):
+    sec = int(sec)
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
 def main():
+    heartbeat("Pipeline run started. Checking for new episodes…")
+
     uploaded = load_uploaded()
     feed = feedparser.parse(RSS_FEED)
 
     episodes = list(reversed(feed.entries))
+
+    start_run = time.time()
 
     for ep in episodes:
         guid = ep.get("guid", ep.link)
@@ -229,15 +305,34 @@ def main():
         description = clean_description(raw_description)
         audio_url = ep.enclosures[0].href
 
-        notify_discord(f"🎬 Starting upload: **{title}**")
+        send_discord_embed(
+            "🎬 Starting episode processing",
+            description=f"**{title}**",
+            color=0xE67E22,
+            fields=[
+                ("GUID", guid, False),
+                ("Audio URL", audio_url, False),
+            ],
+        )
 
         cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
 
+        t_download_start = time.time()
         download_audio(audio_url, AUDIO_FILE)
+        t_download_end = time.time()
+
         duration = get_duration(AUDIO_FILE)
 
-        if duration > SPLIT_THRESHOLD_SECONDS:
-            notify_discord("✂️ Episode is long — splitting into two parts…")
+        long_episode = duration > SPLIT_THRESHOLD_SECONDS
+
+        t_render_start = time.time()
+
+        if long_episode:
+            send_discord_embed(
+                "✂️ Long episode detected",
+                description=f"Duration: {format_seconds(duration)}\nSplitting into two parts.",
+                color=0xC0392B,
+            )
 
             part1_audio, part2_audio, split_point = split_audio(AUDIO_FILE)
 
@@ -255,27 +350,75 @@ def main():
         else:
             generate_video(AUDIO_FILE, FINAL_VIDEO)
 
+        t_render_end = time.time()
+
+        t_upload_start = time.time()
         try:
-            video_id = upload_to_youtube(title, description, FINAL_VIDEO)
+            video_id = upload_to_youtube_with_retry(title, description, FINAL_VIDEO)
+            t_upload_end = time.time()
+
             url = f"https://youtu.be/{video_id}"
-            notify_discord(f"✅ Uploaded **{title}** — {url}")
+
+            total_time = time.time() - start_run
+            download_time = t_download_end - t_download_start
+            render_time = t_render_end - t_render_start
+            upload_time = t_upload_end - t_upload_start
+
+            send_discord_embed(
+                "✅ Episode uploaded",
+                description=f"**{title}**\n{url}",
+                color=0x2ECC71,
+                fields=[
+                    ("Duration", format_seconds(duration), True),
+                    ("Split", "Yes" if long_episode else "No", True),
+                    ("Download time", format_seconds(download_time), True),
+                    ("Render time", format_seconds(render_time), True),
+                    ("Upload time", format_seconds(upload_time), True),
+                    ("Total run time", format_seconds(total_time), True),
+                ],
+            )
 
             write_summary(f"""
 ## Podcast Upload Summary
 
 **Episode:** {title}  
-**Uploaded:** {url}  
+**URL:** {url}  
+
+**Duration:** {format_seconds(duration)}  
+**Split:** {"Yes" if long_episode else "No"}  
+
+**Download time:** {format_seconds(download_time)}  
+**Render time:** {format_seconds(render_time)}  
+**Upload time:** {format_seconds(upload_time)}  
+**Total run time:** {format_seconds(total_time)}  
+
 **Status:** Success  
 """)
 
         except Exception as e:
-            notify_discord(f"❌ Upload failed: **{title}**\nError: `{e}`")
+            t_upload_end = time.time()
+            upload_time = t_upload_end - t_upload_start
+
+            send_discord_embed(
+                "❌ Upload failed",
+                description=f"**{title}**\nError: `{e}`",
+                color=0xE74C3C,
+                fields=[
+                    ("Duration", format_seconds(duration), True),
+                    ("Upload time", format_seconds(upload_time), True),
+                ],
+            )
+
             write_summary(f"""
 ## Podcast Upload Summary
 
 ❌ Upload failed  
+
 **Episode:** {title}  
 **Error:** {e}  
+
+**Duration:** {format_seconds(duration)}  
+**Upload time:** {format_seconds(upload_time)}  
 """)
             raise
 
@@ -287,7 +430,11 @@ def main():
         break  # Only one episode per run
 
     else:
-        notify_discord("✔️ No new episodes found. Pipeline idle.")
+        send_discord_embed(
+            "✔️ No new episodes",
+            description="No new episodes found. Pipeline idle until next run.",
+            color=0x95A5A6,
+        )
         write_summary("## Podcast Upload Summary\n\nNo new episodes found.\n")
 
 
