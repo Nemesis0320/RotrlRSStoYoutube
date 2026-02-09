@@ -195,7 +195,12 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
     ticker_text = f"Now Playing: {episode_title}"
-
+    
+    safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
+    safe_season_label = season_label.replace("'", r"\'")
+    safe_episode_title = episode_title.replace("'", r"\'")
+    safe_ticker_text = ticker_text.replace("'", r"\'")
+    
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
@@ -231,13 +236,13 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{PODCAST_TITLE}":x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_podcast_title}":x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
 
-        [bg_title]drawtext=fontfile={FONT_FILE}:text="{season_label}":x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
+        [bg_title]drawtext=fontfile={FONT_FILE}:text="{safe_season_label}":x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
 
-        [bg_season]drawtext=fontfile={FONT_FILE}:text="{episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+        [bg_season]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
