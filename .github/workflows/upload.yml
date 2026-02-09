@@ -22,6 +22,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -62,10 +64,14 @@ jobs:
             echo "No summary.txt generated." >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Commit updated uploaded.json
+      - name: Configure GitHub token
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+
+      - name: Commit updated uploaded.json
+        run: |
           git add uploaded.json daily_stats.json || true
           git commit -m "Update uploaded episodes and daily stats" || echo "No changes to commit"
           git push
