@@ -276,7 +276,7 @@ def stitch_videos(v1, v2, out_path):
         f.write(f"file '{v1}'\nfile '{v2}'\n")
     run_cmd(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", out_path])
     return os.path.exists(out_path)
-def full_render_pipeline(season_label):
+def full_render_pipeline(title, season_label):
     log("RENDER PIPELINE: start")
     dur, split = split_audio(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO)
     log("SPLIT RESULT:", "duration", dur, "split", split)
@@ -365,12 +365,12 @@ def upload_with_retry(path, title, description, playlist_id):
 
 def render_and_upload(title, description, season_label):
     log("RENDER+UPLOAD START:", title)
-    video_path, dur = full_render_pipeline(season_label)
+    video_path, dur = full_render_pipeline(title, season_label)
     log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
     if not video_path:
         send_discord_embed("Render failed", "Re-rendering...", 0xE74C3C)
         log("RETRY RENDER")
-        video_path, dur = full_render_pipeline(season_label)
+        video_path, dur = full_render_pipeline(title, season_label)
         log("SECOND RENDER RESULT:", video_path, "DUR:", dur)
         if not video_path:
             log("RENDER FAILED TWICE")
