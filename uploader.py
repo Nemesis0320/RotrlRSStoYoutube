@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 RSS_FEED = "https://castopod.aroah.website/@ClintonsCoreClassics/feed.xml"
-BACKGROUND = "assets/1200x1200bf.webp"
+BACKGROUND = "assets/1200x1200bf.png"
 UPLOADED_DB = "uploaded.json"
 PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
