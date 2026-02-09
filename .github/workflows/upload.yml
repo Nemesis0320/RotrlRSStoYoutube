@@ -22,16 +22,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ⭐ DECODE THE BASE64 SECRET INTO token.json
+      # DECODE THE BASE64 SECRET INTO token.json
       - name: Add YouTube credentials
         run: echo "${{ secrets.YOUTUBE_TOKEN_JSON_B64 }}" | base64 --decode > token.json
-
-      # ⭐ DEBUG STEP — SHOW WHAT THE RUNNER ACTUALLY WROTE
-      - name: Debug token.json
-        run: |
-          echo "----- token.json -----"
-          cat token.json
-          echo "----------------------"
 
       - name: Run uploader
         env:
