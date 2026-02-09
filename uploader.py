@@ -177,15 +177,67 @@ def split_audio(in_path, p1, p2):
     run_cmd(["ffmpeg", "-y", "-i", in_path, "-ss", str(mid), p2])
     return dur, True
 
-def render_video(audio_path, out_path):
-    cleanup_files(out_path)
+def render_video(audio, output, episode_title=None):
+    if episode_title is None:
+        episode_title = "Untitled Episode"
+
+    log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
+
+    ticker_text = f"Now Playing: {episode_title}"
+
+    filter_complex = f"""
+        [0:v]scale={VIDEO_SIZE}[bg];
+
+        [1:a]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
+        [1:a]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_glow];
+
+        [wave_inner]v360=input=rectilinear:output=polar[polar_inner];
+        [wave_glow]v360=input=rectilinear:output=polar[polar_glow];
+
+        [polar_glow]scale=740:740, gblur=sigma=12[glow_blur];
+
+        [polar_inner][glow_blur]blend=all_mode=screen:all_opacity=0.7[combined];
+
+        [combined][2:v]alphamerge[circ_wave];
+
+        [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
+
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{PODCAST_TITLE}':x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
+
+        [bg_title]drawtext=fontfile={FONT_FILE}:text='{SEASON_LABEL}':x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
+
+        [bg_season]drawtext=fontfile={FONT_FILE}:text='{episode_title}':x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{ticker_text}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+    """.replace("\n", " ")
+
     cmd = [
-        "ffmpeg","-y","-loop","1","-i","assets/1200x1200bf.png","-i",audio_path,
-        "-c:v","libx264","-preset","veryfast","-tune","stillimage",
-        "-c:a","aac","-b:a","192k","-shortest",out_path
+        "ffmpeg",
+        "-y",
+        "-loop", "1",
+        "-i", BG_IMAGE,
+        "-i", audio,
+        "-i", "assets/circle_mask_720.png",
+        "-filter_complex", filter_complex,
+        "-map", "[final]",
+        "-map", "1:a",
+        "-r", str(VIDEO_FPS),
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-tune", "stillimage",
+        "-crf", VIDEO_CRF,
+        "-c:a", "aac",
+        "-b:a", AUDIO_BITRATE,
+        "-shortest",
+        output,
     ]
-    run_cmd(cmd)
-    return os.path.exists(out_path)
+
+    out = run_cmd(cmd)
+    log("RENDER L3-CIRC OUT:", out[:1000])
+    exists = os.path.exists(output)
+    size = os.path.getsize(output) if exists else 0
+    log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
+    return exists and size > 0
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
