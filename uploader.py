@@ -215,10 +215,10 @@ def render_video(audio, output, episode_title=None, season_label=None):
             a='if(lum(X,Y)/255 > 0.90, 255, 0)'
         [wave_clip_masked];
 
-        [wave_inner]v360=input=rectilinear:output=polar[polar_inner];
-        [wave_glow]v360=input=rectilinear:output=polar[polar_glow];
-        [wave_glow_hot]v360=input=rectilinear:output=polar[polar_glow_hot];
-        [wave_clip_masked]v360=input=rectilinear:output=polar[polar_clip];
+        [wave_inner]copy[polar_inner];
+        [wave_glow]copy[polar_glow];
+        [wave_glow_hot]copy[polar_glow_hot];
+        [wave_clip_masked]copy[polar_clip];
 
         [polar_glow]gblur=sigma=10[glow_soft];
         [polar_glow_hot]gblur=sigma=15[glow_hot];
