@@ -49,9 +49,10 @@ jobs:
 
       - name: Run uploader (one episode per run, RAM temp)
         env:
-          YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
-          TMPDIR: /dev/shm
+          RSS_URL: ${{ secrets.RSS_URL }}
+          YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}   # OK if empty
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TMPDIR: /dev/shm
         run: python3 uploader.py
 
       - name: Write GitHub step summary
