@@ -52,10 +52,20 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python3 uploader.py
 
+      - name: Write GitHub step summary
+        if: always()
+        run: |
+          if [ -f summary.txt ]; then
+            echo "### Podcast Upload Summary" >> $GITHUB_STEP_SUMMARY
+            cat summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary.txt generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Commit updated uploaded.json
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add uploaded.json
-          git commit -m "Update uploaded episodes" || echo "No changes to commit"
+          git add uploaded.json daily_stats.json || true
+          git commit -m "Update uploaded episodes and daily stats" || echo "No changes to commit"
           git push
