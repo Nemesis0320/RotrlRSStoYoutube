@@ -23,7 +23,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Add YouTube credentials
-        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" > token.json
+        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON_B64 }}" | base64 --decode > token.json
 
       - name: Run uploader
         env:
