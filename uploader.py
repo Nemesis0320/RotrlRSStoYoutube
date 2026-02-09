@@ -215,7 +215,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         [a_glow_hot]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=yellow:scale=lin[wave_glow_hot];
 
         [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
-        [wave_clip_raw]geq=lum='if(lum(X,Y)/255>0.90,255,0)':a='if(lum(X,Y)/255>0.90,255,0)'[wave_clip_masked];
+        [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
 
         [wave_inner]copy[polar_inner];
         [wave_glow]copy[polar_glow];
@@ -282,6 +282,7 @@ def stitch_videos(v1, v2, out_path):
         f.write(f"file '{v1}'\nfile '{v2}'\n")
     run_cmd(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", out_path])
     return os.path.exists(out_path)
+    
 def full_render_pipeline(title, season_label):
     log("RENDER PIPELINE: start")
     dur, split = split_audio(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO)
