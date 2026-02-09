@@ -256,7 +256,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-tune", "stillimage",
-        "-crf", VIDEO_CRF,
+        "-crf", str(VIDEO_CRF),
         "-c:a", "aac",
         "-b:a", AUDIO_BITRATE,
         "-shortest",
