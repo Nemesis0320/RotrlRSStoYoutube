@@ -2,13 +2,15 @@ name: Upload Podcast Episodes
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 */2 * * *"   # Run every 2 hours
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Free disk space
+      - name: Free disk space aggressively
         run: |
           echo "Before cleanup:"
           df -h
@@ -18,7 +20,7 @@ jobs:
           echo "After cleanup:"
           df -h
 
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -27,12 +29,14 @@ jobs:
           python-version: "3.10"
 
       - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Add YouTube credentials
+      - name: Decode YouTube OAuth token
         run: echo "${{ secrets.YOUTUBE_TOKEN_JSON_B64 }}" | base64 --decode > token.json
 
       - name: Debug token.json
@@ -44,14 +48,13 @@ jobs:
       - name: Run uploader (one episode per run, RAM temp)
         env:
           YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
-        run: |
-          export TMPDIR=/dev/shm
-          python3 uploader.py
+          TMPDIR: /dev/shm
+        run: python3 uploader.py
 
-      - name: Commit uploaded.json
+      - name: Commit updated uploaded.json
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add uploaded.json
-          git commit -m "Update uploaded episodes" || echo "No changes"
+          git commit -m "Update uploaded episodes" || echo "No changes to commit"
           git push
