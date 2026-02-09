@@ -188,15 +188,33 @@ def render_video(audio, output, episode_title=None):
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
-        [1:a]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
-        [1:a]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_glow];
+        [1:a]asplit=3[a_main][a_glow][a_clip];
+
+        [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
+
+        [a_glow]compand=attacks=0:decays=0:points=-80/-80|-40/-40|-20/-10|0/0[a_glow_soft];
+        [a_glow_soft]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_glow];
+
+        [a_glow]compand=attacks=0:decays=0:points=-80/-80|-30/-20|-10/0|0/10[a_glow_hot];
+        [a_glow_hot]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=yellow:scale=lin[wave_glow_hot];
+
+        [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
+        [wave_clip_raw]geq=
+            lum='if(lum(X,Y)/255 > 0.90, lum(X,Y), 0)':
+            a='if(lum(X,Y)/255 > 0.90, 255, 0)'
+        [wave_clip_masked];
 
         [wave_inner]v360=input=rectilinear:output=polar[polar_inner];
         [wave_glow]v360=input=rectilinear:output=polar[polar_glow];
+        [wave_glow_hot]v360=input=rectilinear:output=polar[polar_glow_hot];
+        [wave_clip_masked]v360=input=rectilinear:output=polar[polar_clip];
 
-        [polar_glow]scale=740:740, gblur=sigma=12[glow_blur];
+        [polar_glow]gblur=sigma=10[glow_soft];
+        [polar_glow_hot]gblur=sigma=15[glow_hot];
 
-        [polar_inner][glow_blur]blend=all_mode=screen:all_opacity=0.7[combined];
+        [polar_inner][glow_soft]blend=all_mode=screen:all_opacity=0.7[tmp1];
+        [tmp1][glow_hot]blend=all_mode=screen:all_opacity=0.8[tmp2];
+        [tmp2][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
 
         [combined][2:v]alphamerge[circ_wave];
 
@@ -209,6 +227,8 @@ def render_video(audio, output, episode_title=None):
         [bg_season]drawtext=fontfile={FONT_FILE}:text='{episode_title}':x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{ticker_text}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+
+        [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
 
     cmd = [
@@ -219,7 +239,7 @@ def render_video(audio, output, episode_title=None):
         "-i", audio,
         "-i", "assets/circle_mask_720.png",
         "-filter_complex", filter_complex,
-        "-map", "[final]",
+        "-map", "[final_faded]",
         "-map", "1:a",
         "-r", str(VIDEO_FPS),
         "-c:v", "libx264",
