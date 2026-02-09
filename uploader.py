@@ -180,7 +180,7 @@ def split_audio(in_path, p1, p2):
 def render_video(audio_path, out_path):
     cleanup_files(out_path)
     cmd = [
-        "ffmpeg","-y","-loop","1","-i","cover.png","-i",audio_path,
+        "ffmpeg","-y","-loop","1","-i","assets/1200x1200bf.png","-i",audio_path,
         "-c:v","libx264","-preset","veryfast","-tune","stillimage",
         "-c:a","aac","-b:a","192k","-shortest",out_path
     ]
