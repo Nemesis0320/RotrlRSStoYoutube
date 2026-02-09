@@ -49,6 +49,7 @@ jobs:
         env:
           YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
           TMPDIR: /dev/shm
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python3 uploader.py
 
       - name: Commit updated uploaded.json
