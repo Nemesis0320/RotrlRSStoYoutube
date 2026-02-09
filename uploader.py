@@ -177,6 +177,16 @@ def split_audio(in_path, p1, p2):
     run_cmd(["ffmpeg", "-y", "-i", in_path, "-ss", str(mid), p2])
     return dur, True
 
+VIDEO_SIZE = "720x720"
+VIDEO_FPS = 12
+VIDEO_CRF = 30
+AUDIO_BITRATE = "64k"
+
+BG_IMAGE = "assets/1200x1200bf.png"
+FONT_FILE = "assets/IMFellEnglishSC.ttf"
+
+PODCAST_TITLE = "Clinton's Core Classics"
+
 def render_video(audio, output, episode_title=None, season_label=None):
     if episode_title is None:
         episode_title = "Untitled Episode"
@@ -353,7 +363,7 @@ def upload_with_retry(path, title, description, playlist_id):
     log("SECOND VIDEO NOT LIVE, GIVING UP")
     return None
 
-def render_and_upload(title, description):
+def render_and_upload(title, description, season_label):
     log("RENDER+UPLOAD START:", title)
     video_path, dur = full_render_pipeline(season_label)
     log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
