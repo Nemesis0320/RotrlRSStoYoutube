@@ -3,6 +3,8 @@ import json
 import feedparser
 import requests
 import subprocess
+import re
+from html import unescape
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -13,6 +15,21 @@ UPLOADED_DB = "uploaded.json"
 PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID")
 
 SPLIT_THRESHOLD_SECONDS = 90 * 60  # 90 minutes
+
+
+def clean_description(text):
+    """Strip HTML, decode entities, remove invalid chars, trim length."""
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Decode HTML entities (&amp;, &quot;, etc.)
+    text = unescape(text)
+
+    # Remove control characters
+    text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
+
+    # Trim to YouTube's max allowed length
+    return text[:4900]
 
 
 def run_cmd(cmd):
@@ -173,7 +190,10 @@ def main():
             continue
 
         title = ep.title
-        description = ep.get("description", "")
+
+        raw_description = ep.get("description", "")
+        description = clean_description(raw_description)
+
         audio_url = ep.enclosures[0].href
 
         audio_file = "temp.mp3"
