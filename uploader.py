@@ -177,10 +177,11 @@ def split_audio(in_path, p1, p2):
     run_cmd(["ffmpeg", "-y", "-i", in_path, "-ss", str(mid), p2])
     return dur, True
 
-def render_video(audio, output, episode_title=None):
+def render_video(audio, output, episode_title=None, season_label=None):
     if episode_title is None:
         episode_title = "Untitled Episode"
-
+    if season_label is None:
+        season_label = SEASON_LABEL  # fallback
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
     ticker_text = f"Now Playing: {episode_title}"
@@ -222,7 +223,7 @@ def render_video(audio, output, episode_title=None):
 
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{PODCAST_TITLE}':x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
 
-        [bg_title]drawtext=fontfile={FONT_FILE}:text='{SEASON_LABEL}':x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
+        [bg_title]drawtext=fontfile={FONT_FILE}:text='{season_label}':x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
 
         [bg_season]drawtext=fontfile={FONT_FILE}:text='{episode_title}':x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
@@ -265,13 +266,13 @@ def stitch_videos(v1, v2, out_path):
         f.write(f"file '{v1}'\nfile '{v2}'\n")
     run_cmd(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", out_path])
     return os.path.exists(out_path)
-def full_render_pipeline():
+def full_render_pipeline(season_label):
     log("RENDER PIPELINE: start")
     dur, split = split_audio(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO)
     log("SPLIT RESULT:", "duration", dur, "split", split)
     if not split:
         log("SINGLE PART RENDER:", PART1_AUDIO, "->", FINAL_VIDEO)
-        if not render_video(PART1_AUDIO, FINAL_VIDEO):
+        if not render_video(PART1_AUDIO, FINAL_VIDEO, episode_title=title, season_label=season_label):
             log("RENDER FAILED: single part")
             return None, dur
         exists = os.path.exists(FINAL_VIDEO)
@@ -279,8 +280,8 @@ def full_render_pipeline():
         log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
         return FINAL_VIDEO, dur
     log("TWO PART RENDER:", PART1_AUDIO, "->", PART1_VIDEO, "|", PART2_AUDIO, "->", PART2_VIDEO)
-    ok1 = render_video(PART1_AUDIO, PART1_VIDEO)
-    ok2 = render_video(PART2_AUDIO, PART2_VIDEO)
+    ok1 = render_video(PART1_AUDIO, PART1_VIDEO, episode_title=title, season_label=season_label)
+    ok2 = render_video(PART2_AUDIO, PART2_VIDEO, episode_title=title, season_label=season_label)
     log("RENDER PART1 OK:", ok1, "EXISTS:", os.path.exists(PART1_VIDEO))
     log("RENDER PART2 OK:", ok2, "EXISTS:", os.path.exists(PART2_VIDEO))
     if not (ok1 and ok2):
@@ -354,12 +355,12 @@ def upload_with_retry(path, title, description, playlist_id):
 
 def render_and_upload(title, description):
     log("RENDER+UPLOAD START:", title)
-    video_path, dur = full_render_pipeline()
+    video_path, dur = full_render_pipeline(season_label)
     log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
     if not video_path:
         send_discord_embed("Render failed", "Re-rendering...", 0xE74C3C)
         log("RETRY RENDER")
-        video_path, dur = full_render_pipeline()
+        video_path, dur = full_render_pipeline(season_label)
         log("SECOND RENDER RESULT:", video_path, "DUR:", dur)
         if not video_path:
             log("RENDER FAILED TWICE")
@@ -401,6 +402,17 @@ def next_episode(uploaded, episodes):
 # Main pipeline
 def process_episode(eid, title, url, uploaded, stats):
     log("PROCESS EP:", eid, title, url)
+    # Extract season number from title
+    # Expected formats:
+    #   "Season 6 - Episode 12: Title"
+    #   "S6E12: Title"
+    #   "Season 6 Episode 12: Title"
+    import re
+    m = re.search(r"[Ss]eason\s+(\d+)", title)
+    if not m:
+        m = re.search(r"[Ss](\d+)[Ee]\d+", title)
+    season_num = int(m.group(1)) if m else 0
+    season_label = f"Season {season_num}"
     cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
     if not download_audio(url, AUDIO_FILE):
         stats["failures_today"] += 1
@@ -408,7 +420,7 @@ def process_episode(eid, title, url, uploaded, stats):
         send_discord_embed("Download failed", title, 0xE74C3C)
         log("DOWNLOAD FAILED:", url)
         return False
-    vid, dur = render_and_upload(title, title)
+    vid, dur = render_and_upload(title, title, season_label=season_label)
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
     if not vid:
         stats["failures_today"] += 1
