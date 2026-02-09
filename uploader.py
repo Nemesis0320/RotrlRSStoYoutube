@@ -268,7 +268,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     ]
 
     out = run_cmd(cmd)
-    log("RENDER L3-CIRC OUT:", out[:1000])
+    log("RENDER L3-CIRC OUT:", out)
     exists = os.path.exists(output)
     size = os.path.getsize(output) if exists else 0
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
