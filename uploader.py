@@ -271,10 +271,19 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     out = run_cmd(cmd)
     log("RENDER L3-CIRC OUT:", out)
+
+    # Detect FFmpeg failure
+    if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
+        log("RENDER L3-CIRC ERROR DETECTED:", out[:2000])
+        return False
+
+    # Detect missing or empty output file
     exists = os.path.exists(output)
     size = os.path.getsize(output) if exists else 0
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
+
     return exists and size > 0
+
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
