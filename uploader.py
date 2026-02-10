@@ -204,30 +204,17 @@ def render_video(audio, output, episode_title=None, season_label=None):
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
-        [1:a:0]asplit=3[a_main][a_glow][a_clip];
+        [1:a]asplit=2[a_main][a_clip];
 
         [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
-
-        [a_glow]compand=attacks=0:decays=0:points=-80/-80|-40/-40|-20/-10|0/0[a_glow_soft];
-        [a_glow_soft]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_glow];
-
-        [a_glow]compand=attacks=0:decays=0:points=-80/-80|-30/-20|-10/0|0/10[a_glow_hot];
-        [a_glow_hot]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=yellow:scale=lin[wave_glow_hot];
 
         [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
         [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
 
         [wave_inner]copy[polar_inner];
-        [wave_glow]copy[polar_glow];
-        [wave_glow_hot]copy[polar_glow_hot];
         [wave_clip_masked]copy[polar_clip];
 
-        [polar_glow]gblur=sigma=10[glow_soft];
-        [polar_glow_hot]gblur=sigma=15[glow_hot];
-
-        [polar_inner][glow_soft]blend=all_mode=screen:all_opacity=0.7[tmp1];
-        [tmp1][glow_hot]blend=all_mode=screen:all_opacity=0.8[tmp2];
-        [tmp2][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
+        [polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
 
         [combined][2:v]alphamerge[circ_wave];
 
