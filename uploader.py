@@ -217,7 +217,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         f"[0:v]scale={VIDEO_SIZE}[bg];"
         "color=black@0:s=720x720[mask_base];"
         "[mask_base]format=rgba[mask_rgba];"
-        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)\\:128\\:128\\:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)[mask];"
+        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)\\\\:128\\\\:128\\\\:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)[mask];"
         f"[1:a]asplit=2[a_main][a_clip];"
         f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];"
         "[wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];"
@@ -234,7 +234,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white:[bg_text];"
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
         f"text='{safe_ticker_text}':"
-        "x=w-mod(t*120\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
+        ""x=w-mod(t*120\\\\\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
