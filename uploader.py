@@ -246,7 +246,6 @@ def render_video(audio, output, episode_title=None, season_label=None):
         f'text="{safe_podcast_title}\\\\n{safe_season_label}\\\\n{safe_episode_title}":'
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];\n"
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
-        f"[bg_text]drawtext=fontfile={FONT_FILE}:"
         f'text="{safe_ticker_text}":x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];;\n'
     )
 
