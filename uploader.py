@@ -284,6 +284,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("FILTERGRAPH SIZE:", os.path.getsize(script_path))
     log("CURRENT WORKING DIRECTORY:", os.getcwd())
 
+    output = str(output).strip()
+    
     cmd = [
         "ffmpeg",
         "-loglevel", "debug",
