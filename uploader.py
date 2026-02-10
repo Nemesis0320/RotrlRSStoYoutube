@@ -237,6 +237,9 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
+    # DEBUG: show the literal filtergraph string
+    log("FINAL FILTERGRAPH:", repr(filter_complex))
+
     cmd = [
         "ffmpeg",
         "-y",
@@ -257,8 +260,14 @@ def render_video(audio, output, episode_title=None, season_label=None):
         output,
     ]
 
-    log("FFMPEG CMD:", " ".join(cmd))
+    # DEBUG: show the literal command array
+    log("CMD:", repr(cmd))
+
     out = run_cmd(cmd)
+
+    # DEBUG: show the literal stderr output
+    log("FFMPEG STDERR RAW:", repr(out))
+
     log("RENDER L3-CIRC OUT:", out)
 
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
