@@ -461,7 +461,7 @@ def next_episode(uploaded, episodes):
     return None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, description, uploaded, stats):
+def process_episode(eid, title, url, description, tags, uploaded, stats):
     log("PROCESS EP:", eid, title, url)
     # Extract season number from title
     import re
