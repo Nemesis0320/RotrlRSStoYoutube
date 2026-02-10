@@ -207,11 +207,10 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
     def esc(s):
-        # Escape backslashes first
+        # Escape backslashes
         s = s.replace("\\", "\\\\")
-        # Escape apostrophes
-        s = s.replace("'", "\\\\'")
-        # Fix newline escapes for FFmpeg drawtext
+        # DO NOT escape apostrophes inside double-quoted FFmpeg strings
+        # Fix newline escapes
         s = s.replace("\\\\n", "\\n")
         return s
 
