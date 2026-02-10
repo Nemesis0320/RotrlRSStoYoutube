@@ -205,6 +205,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     ticker_text = f"Now Playing: {episode_title}"
 
+    # Escape only apostrophes for drawtext
     safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
     safe_season_label = season_label.replace("'", r"\'")
     safe_episode_title = episode_title.replace("'", r"\'")
@@ -212,40 +213,51 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     log("EPISODE TITLE:", episode_title)
     log("TICKER TEXT:", ticker_text)
-    
+
+    # ---------------------------------------------------------
+    # FILTERGRAPH (NO INLINE ESCAPE HELL — WRITTEN TO FILE RAW)
+    # ---------------------------------------------------------
     filter_complex = (
         f"[0:v]scale={VIDEO_SIZE}[bg];"
         "color=black@0:s=720x720[mask_base];"
         "[mask_base]format=rgba[mask_rgba];"
-        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)\\\\:128\\\\:128\\\\:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)[mask];"
+        # GEQ — commas escaped, colons NOT escaped
+        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)[mask];"
+        # Audio split + waveforms
         f"[1:a]asplit=2[a_main][a_clip];"
         f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];"
         "[wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];"
         f"[a_clip]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw_raw];"
         "[wave_clip_raw_raw]pad=720:720:0:720-40:black@0[wave_clip_raw];"
         "[wave_clip_raw][mask]alphamerge[wave_clip_masked];"
+        # Polar transform
         "[wave_inner]v360=input=rectilinear:output=fisheye[polar_inner];"
         "[wave_clip_masked]v360=input=rectilinear:output=fisheye[polar_clip];"
         "[polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];"
         "[combined][mask]alphamerge[circ_wave];"
+        # Overlay circular waveform on background
         "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];"
+        # Title block
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:"
         f"text='{safe_podcast_title}\\n{safe_season_label}\\n{safe_episode_title}':"
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white:[bg_text];"
+        # Ticker
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
-        f"text='{safe_ticker_text}':"
-        "x=w-mod(t*120\\\\\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
+        f"text='{safe_ticker_text}':x=w-mod(t*120\\\\\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
+        # Fade in
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
-    # DEBUG: show the literal filtergraph string
+    # Debug: show literal filtergraph
     log("FINAL FILTERGRAPH:", repr(filter_complex))
+
+    # Write filtergraph to file (static FFmpeg WILL read this)
     with open("filtergraph.txt", "w") as f:
         f.write(filter_complex)
 
-
-
-    
+    # ---------------------------------------------------------
+    # FFmpeg command using filter_complex_script
+    # ---------------------------------------------------------
     cmd = [
         "ffmpeg",
         "-y",
@@ -266,14 +278,11 @@ def render_video(audio, output, episode_title=None, season_label=None):
         output,
     ]
 
-    # DEBUG: show the literal command array
     log("CMD:", repr(cmd))
 
     out = run_cmd(cmd)
 
-    # DEBUG: show the literal stderr output
     log("FFMPEG STDERR RAW:", repr(out))
-
     log("RENDER L3-CIRC OUT:", out)
 
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
@@ -285,7 +294,6 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
 
     return exists and size > 0
-
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
