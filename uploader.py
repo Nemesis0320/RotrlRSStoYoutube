@@ -225,10 +225,10 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];"
         "[combined][mask]alphamerge[circ_wave];"
         "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];"
-        f"[bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_podcast_title}':x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white[bg_title];"
-        f"[bg_title]drawtext=fontfile={FONT_FILE}:text='{safe_season_label}':x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold[bg_season];"
-        f"[bg_season]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white[bg_ep];"
-        f"[bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];"
+        f"[bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_podcast_title}':x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:[bg_title]"
+        f"[bg_title]drawtext=fontfile={FONT_FILE}:text='{safe_season_label}':x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:[bg_season]"
+        f"[bg_season]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:[bg_ep]"
+        f"[bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\\\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final]"
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
