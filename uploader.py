@@ -192,6 +192,7 @@ BG_IMAGE = "assets/1200x1200bf.png"
 FONT_FILE = "assets/IMFellEnglishSC.ttf"
 
 PODCAST_TITLE = "Clinton's Core Classics"
+SEASON_LABEL = "Season"
 
 def render_video(audio, output, episode_title=None, season_label=None):
     if episode_title is None:
