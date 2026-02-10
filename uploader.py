@@ -1,4 +1,4 @@
-f'text="{safe_ticker_text}":x=w-import os
+import os
 import json
 import time
 import subprocess
