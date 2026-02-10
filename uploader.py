@@ -204,7 +204,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
-        color=black@0:s=720x720:format=rgba,
+        color=black@0:s=720x720[mask_base];
+        [mask_base]format=rgba,
         geq=a='if((X-360)*(X-360)+(Y-360)*(Y-360) < 330*330, 255, 0)'[mask];
 
         [1:a]asplit=2[a_main][a_clip];
