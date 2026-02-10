@@ -440,9 +440,13 @@ def get_episodes(feed):
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
         description = get_description(e)
+        tags = [t.term for t in getattr(e, "tags", [])]
+
         log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
+
         if eid and url:
-            eps.append((eid, title, url, description))
+            eps.append((eid, title, url, description, tags))
+
     log("EPISODE LIST BUILT:", len(eps))
     return eps
 
