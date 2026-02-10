@@ -6,13 +6,20 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
+
 def upload_video(file_path, title, description, tags, playlist_id=None):
     # Load OAuth token.json
     if not os.path.exists("token.json"):
         print("[upload] ERROR: token.json not found")
         return None
 
-    creds = Credentials.from_authorized_user_file("token.json", ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"])
+    creds = Credentials.from_authorized_user_file(
+        "token.json",
+        [
+            "https://www.googleapis.com/auth/youtube.upload",
+            "https://www.googleapis.com/auth/youtube"
+        ]
+    )
 
     youtube = build("youtube", "v3", credentials=creds)
 
@@ -21,7 +28,7 @@ def upload_video(file_path, title, description, tags, playlist_id=None):
         "snippet": {
             "title": title,
             "description": description,
-            "tags": tags.split(",") if tags else []     # <-- ADD THIS
+            "tags": tags.split(",") if tags else []
         },
         "status": {
             "privacyStatus": "public"
@@ -81,12 +88,19 @@ def main():
     parser.add_argument("--playlist", default=None)
     args = parser.parse_args()
 
-    vid = upload_video(args.file, args.title, args.description, args.tags, args.playlist)
+    vid = upload_video(
+        args.file,
+        args.title,
+        args.description,
+        args.tags,
+        args.playlist
+    )
 
     if vid:
-        print(vid) 
+        print(f"VIDEO_ID: {vid}")
         sys.exit(0)
     else:
+        print("[upload] ERROR: Upload failed")
         sys.exit(1)
 
 
