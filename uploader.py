@@ -137,7 +137,8 @@ def run_cmd(cmd):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            shell=False
         )
         out = result.stdout
         log("CMD OK:", " ".join(cmd))
@@ -230,10 +231,10 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];"
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:"
         f"text='{safe_podcast_title}\\n{safe_season_label}\\n{safe_episode_title}':"
-        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white: [bg_text];"
+        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white:[bg_text];"
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
         f"text='{safe_ticker_text}':"
-        "x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white: [final];"
+        "x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
