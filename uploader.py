@@ -136,18 +136,19 @@ def run_cmd(cmd):
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,   # <-- capture stderr separately
             text=True,
             shell=False
         )
-        out = result.stdout
-        log("CMD OK:", " ".join(cmd))
-        log("CMD OUT:", out)
-        return out
+        # Log both streams separately
+        log("CMD STDOUT:", result.stdout)
+        log("CMD STDERR:", result.stderr)
+        # Return combined output for your existing checks
+        return result.stdout + result.stderr
     except Exception as e:
         out = str(e)
         log("CMD FAIL:", " ".join(cmd))
-        log("CMD OUT:", out)
+        log("CMD EXCEPTION:", out)
         return out
 
 def format_seconds(sec):
