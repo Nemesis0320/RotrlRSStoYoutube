@@ -206,18 +206,16 @@ def render_video(audio, output, episode_title=None, season_label=None):
     ticker_text = f"Now Playing: {episode_title}"
 
     # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
-    def esc(s):
-        # Escape backslashes
-        s = s.replace("\\", "\\\\")
-        # DO NOT escape apostrophes inside double-quoted FFmpeg strings
-        # Fix newline escapes
-        s = s.replace("\\\\n", "\\n")
-        return s
+    def _ff_escape_text(s: str) -> str:
+        return (
+            s.replace("\\", r"\\")
+             .replace(":", r"\:")
+        )
 
-    safe_podcast_title = esc(PODCAST_TITLE)
-    safe_season_label = esc(season_label)
-    safe_episode_title = esc(episode_title)
-    safe_ticker_text = esc(ticker_text)
+    safe_podcast_title_esc = _ff_escape_text(PODCAST_TITLE)
+    safe_season_label_esc = _ff_escape_text(season_label)
+    safe_episode_title_esc = _ff_escape_text(episode_title)
+    safe_ticker_text_esc = _ff_escape_text(ticker_text)
 
     log("EPISODE TITLE:", episode_title)
     log("TICKER TEXT:", ticker_text)
