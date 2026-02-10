@@ -133,14 +133,20 @@ def cleanup_files(*paths):
 def run_cmd(cmd):
     log("RUN CMD:", " ".join(cmd))
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8", "ignore")
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        out = result.stdout
         log("CMD OK:", " ".join(cmd))
         log("CMD OUT:", out)
         return out
-    except subprocess.CalledProcessError as e:
-        out = e.output.decode("utf-8", "ignore")
+    except Exception as e:
+        out = str(e)
         log("CMD FAIL:", " ".join(cmd))
-        log("CMD OUT:", out[:2000])
+        log("CMD OUT:", out)
         return out
 
 def format_seconds(sec):
@@ -191,16 +197,17 @@ def render_video(audio, output, episode_title=None, season_label=None):
     if episode_title is None:
         episode_title = "Untitled Episode"
     if season_label is None:
-        season_label = SEASON_LABEL  # fallback
+        season_label = SEASON_LABEL
+
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
     ticker_text = f"Now Playing: {episode_title}"
-    
+
     safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
     safe_season_label = season_label.replace("'", r"\'")
     safe_episode_title = episode_title.replace("'", r"\'")
     safe_ticker_text = ticker_text.replace("'", r"\'")
-    
+
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
@@ -233,13 +240,11 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [bg_season]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
-    """.replace("\n", " ")
+    """
 
-
-    # TEMP: print full v360 help (no truncation)
     v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
     log("V360 HELP FULL:", v360_help)
 
@@ -262,16 +267,15 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "-shortest",
         output,
     ]
+
     log("FFMPEG CMD:", " ".join(cmd))
     out = run_cmd(cmd)
     log("RENDER L3-CIRC OUT:", out)
 
-    # Detect FFmpeg failure
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
         log("RENDER L3-CIRC ERROR DETECTED:", out[:2000])
         return False
 
-    # Detect missing or empty output file
     exists = os.path.exists(output)
     size = os.path.getsize(output) if exists else 0
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
@@ -316,7 +320,6 @@ def full_render_pipeline(title, season_label):
     log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
     return FINAL_VIDEO, dur
 
-# Upload logic
 def upload_video(path, title, description, tags, playlist_id):
     log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
     record_quota_usage(1600)
@@ -333,16 +336,21 @@ def upload_video(path, title, description, tags, playlist_id):
         cmd += ["--playlist", playlist_id]
 
     out = run_cmd(cmd)
-    log("UPLOAD.PY OUT:", out[:2000])
+    log("UPLOAD.PY OUT:", out)
 
-    vid = out.strip()
+    # Extract VIDEO_ID from output
+    video_id = None
+    for line in out.splitlines():
+        if "VIDEO_ID:" in line:
+            video_id = line.split("VIDEO_ID:")[-1].strip()
+            break
 
-    if not vid or len(vid) < 5:
+    if not video_id:
         log("UPLOAD FAILED: no VIDEO_ID in output")
         return None
 
-    log("UPLOAD SUCCESS: VIDEO_ID", vid)
-    return vid
+    log("UPLOAD SUCCESS: VIDEO_ID", video_id)
+    return video_id
 
 def poll_video(video_id):
     log("POLL VIDEO:", video_id)
