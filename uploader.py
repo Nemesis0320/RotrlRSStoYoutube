@@ -233,6 +233,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
+    log("FILTER COMPLEX DEBUG:", filter_complex)
+
     import tempfile
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ffgraph") as tf:
         tf.write(filter_complex.encode("utf-8"))
