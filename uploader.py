@@ -208,10 +208,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
     def _ff_escape_text(s: str) -> str:
-        return (
-            s.replace("\\", r"\\")
-             .replace(":", r"\:")
-        )
+        return s.replace(":", r"\:")
 
     safe_podcast_title_esc = _ff_escape_text(PODCAST_TITLE)
     safe_season_label_esc = _ff_escape_text(season_label)
