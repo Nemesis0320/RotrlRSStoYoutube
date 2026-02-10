@@ -251,14 +251,20 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # Debug: show literal filtergraph
     log("FINAL FILTERGRAPH:", repr(filter_complex))
 
-    # Write filtergraph to file
-    with open("filtergraph.txt", "w", encoding="utf-8", newline="\n") as f:
+    # ---------------------------------------------------------
+    # Write filtergraph to the EXACT path FFmpeg will read
+    # ---------------------------------------------------------
+    script_path = "/home/runner/work/RotrlRSStoYoutube/RotrlRSStoYoutube/filtergraph.txt"
+
+    with open(script_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(filter_complex)
+
+    log("WROTE FILTERGRAPH TO:", script_path)
 
     # Dump the file in text mode
     log("---- FILTERGRAPH.TXT CONTENTS ----")
     try:
-        with open("filtergraph.txt", "r", encoding="utf-8") as f:
+        with open(script_path, "r", encoding="utf-8") as f:
             for i, line in enumerate(f.readlines(), 1):
                 log(f"{i:03d}: {repr(line)}")
     except Exception as e:
@@ -268,7 +274,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # Dump the file in raw bytes
     log("---- FILTERGRAPH.TXT RAW BYTES ----")
     try:
-        with open("filtergraph.txt", "rb") as f:
+        with open(script_path, "rb") as f:
             raw = f.read()
         log(raw)
     except Exception as e:
