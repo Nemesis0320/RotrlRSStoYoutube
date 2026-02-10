@@ -277,13 +277,20 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # ---------------------------------------------------------
     # FFmpeg command using filter_complex_script
     # ---------------------------------------------------------
+    script_path = os.path.abspath("filtergraph.txt")
+    log("USING FILTERGRAPH SCRIPT:", script_path)
+    log("FILTERGRAPH EXISTS:", os.path.exists(script_path))
+    log("FILTERGRAPH SIZE:", os.path.getsize(script_path))
+    log("CURRENT WORKING DIRECTORY:", os.getcwd())
+
     cmd = [
         "ffmpeg",
+        "-loglevel", "debug",
         "-y",
         "-loop", "1",
         "-i", BG_IMAGE,
         "-i", audio,
-        "-filter_complex_script", "filtergraph.txt",
+        "-filter_complex_script", script_path,
         "-map", "[final_faded]",
         "-map", "1:a",
         "-r", str(VIDEO_FPS),
@@ -301,7 +308,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     out = run_cmd(cmd)
 
-    log("FFMPEG STDERR RAW:", repr(out))
+    log("FULL FFMPEG STDERR:", out)
     log("RENDER L3-CIRC OUT:", out)
 
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
