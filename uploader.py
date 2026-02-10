@@ -236,9 +236,11 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("FILTER COMPLEX DEBUG:", filter_complex)
 
     import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".ffgraph") as tf:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".ffgraph", dir="/tmp") as tf:
         tf.write(filter_complex.encode("utf-8"))
         filter_file = tf.name
+        with open(filter_file, "r") as f:
+            print("FILTER FILE CONTENT:\n", f.read())
 
     cmd = [
         "ffmpeg",
