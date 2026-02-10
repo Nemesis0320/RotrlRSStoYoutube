@@ -204,19 +204,25 @@ def render_video(audio, output, episode_title=None, season_label=None):
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
+        color=black@0:s=720x720:format=rgba,
+        geq=a='if((X-360)*(X-360)+(Y-360)*(Y-360) < 330*330, 255, 0)'[mask];
+
         [1:a]asplit=2[a_main][a_clip];
 
-        [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
+        [a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];
+        [wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];
 
-        [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
-        [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
+        [a_clip]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw_raw];
+        [wave_clip_raw_raw]pad=720:720:0:720-40:black@0[wave_clip_raw];
 
-        [wave_inner]copy[polar_inner];
-        [wave_clip_masked]copy[polar_clip];
+        [wave_clip_raw][mask]alphamerge[wave_clip_masked];
+
+        [wave_inner]v360=input=rectilinear:output=polar[polar_inner];
+        [wave_clip_masked]v360=input=rectilinear:output=polar[polar_clip];
 
         [polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
 
-        [combined][2:v]alphamerge[circ_wave];
+        [combined][mask]alphamerge[circ_wave];
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
@@ -231,6 +237,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
 
+
     # TEMP: print full v360 help (no truncation)
     v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
     log("V360 HELP FULL:", v360_help)
@@ -241,7 +248,6 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "-loop", "1",
         "-i", BG_IMAGE,
         "-i", audio,
-        "-i", "assets/circle_mask_720.png",
         "-filter_complex", filter_complex,
         "-map", "[final_faded]",
         "-map", "1:a",
@@ -310,15 +316,24 @@ def full_render_pipeline(title, season_label):
     return FINAL_VIDEO, dur
 
 # Upload logic
-def upload_video(path, title, description, playlist_id):
+def upload_video(path, title, description, tags, playlist_id):
     log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
     record_quota_usage(1600)
-    cmd = ["python3", "upload.py", "--file", path, "--title", title, "--description", description]
+
+    cmd = [
+        "python3", "upload.py",
+        "--file", path,
+        "--title", title,
+        "--description", description,
+        "--tags", ",".join(tags) if tags else ""
+    ]
+
     if playlist_id:
         cmd += ["--playlist", playlist_id]
+
     out = run_cmd(cmd)
     log("UPLOAD.PY OUT:", out[:2000])
-    # New upload.py prints ONLY the video ID on success
+
     vid = out.strip()
 
     if not vid or len(vid) < 5:
@@ -386,12 +401,37 @@ def render_and_upload(title, description, season_label):
     return vid, dur
 
 # RSS + queue
+import re
+
+EPISODE_RE = re.compile(r"Season\s+(\d+)\s*-\s*Episode\s+(\d+)", re.IGNORECASE)
+
+def parse_season_episode(entry):
+    m = EPISODE_RE.search(entry.title)
+    if not m:
+        return (9999, 9999)  # fallback if title doesn't match pattern
+    season = int(m.group(1))
+    episode = int(m.group(2))
+    return (season, episode)
+    
 def fetch_rss():
     log("FETCH RSS:", RSS_URL)
     feed = feedparser.parse(RSS_URL)
-    log("RSS ENTRIES:", len(feed.entries))
+    log("RSS ENTRIES (raw):", len(feed.entries))
+
+    # SORT HERE
+    feed.entries = sorted(feed.entries, key=parse_season_episode)
+
+    log("RSS ENTRIES (sorted):", len(feed.entries))
     return feed
 
+def get_description(entry):
+    # Most podcast feeds use .summary
+    if hasattr(entry, "summary") and entry.summary:
+        return entry.summary
+    # Some use .description
+    if hasattr(entry, "description") and entry.description:
+        return entry.description
+    return ""
 
 def get_episodes(feed):
     eps = []
@@ -399,30 +439,27 @@ def get_episodes(feed):
         eid = getattr(e, "id", None)
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
+        description = get_description(e)
         log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
         if eid and url:
-            eps.append((eid, title, url))
+            eps.append((eid, title, url, description))
     log("EPISODE LIST BUILT:", len(eps))
     return eps
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url in episodes:
+    for eid, title, url, description in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
             log("NEXT EP FOUND:", eid, title)
-            return eid, title, url
+            return eid, title, url, description
     log("NO NEW EPISODES")
-    return None, None, None
+    return None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, uploaded, stats):
+def process_episode(eid, title, url, description, uploaded, stats):
     log("PROCESS EP:", eid, title, url)
     # Extract season number from title
-    # Expected formats:
-    #   "Season 6 - Episode 12: Title"
-    #   "S6E12: Title"
-    #   "Season 6 Episode 12: Title"
     import re
     m = re.search(r"[Ss]eason\s+(\d+)", title)
     if not m:
@@ -436,7 +473,7 @@ def process_episode(eid, title, url, uploaded, stats):
         send_discord_embed("Download failed", title, 0xE74C3C)
         log("DOWNLOAD FAILED:", url)
         return False
-    vid, dur = render_and_upload(title, title, season_label=season_label)
+    vid, dur = render_and_upload(title, description, season_label=season_label)
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
     if not vid:
         stats["failures_today"] += 1
