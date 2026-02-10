@@ -131,7 +131,7 @@ def cleanup_files(*paths):
                 pass
 
 def run_cmd(cmd):
-    log("RUN CMD:", " ".join(cmd))
+    log("RUN CMD LIST:", cmd)
     try:
         result = subprocess.run(
             cmd,
@@ -305,7 +305,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         output,
     ]
 
-    log("CMD:", repr(cmd))
+    log("CMD LIST:", cmd)
 
     out = run_cmd(cmd)
 
