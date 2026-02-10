@@ -518,7 +518,7 @@ def main():
         send_discord_embed("Idle", "No new episodes.")
         log("NO NEW EPISODES, EXIT")
         return
-    ok = process_episode(eid, title, url, uploaded, stats)
+    ok = process_episode(eid, title, url, description, tags, uploaded, stats)
     remaining = len([e for e in episodes if e[0] not in uploaded])
     write_daily_summary(stats, remaining)
     if ok:
