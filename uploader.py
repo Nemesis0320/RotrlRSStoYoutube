@@ -512,7 +512,7 @@ def main():
     stats = load_daily_stats()
     stats = reset_daily_stats_if_needed(stats)
     log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url = next_episode(uploaded, episodes)
+    eid, title, url, description, tags = next_episode(uploaded, episodes)
     if not eid:
         write_summary("No new episodes.")
         send_discord_embed("Idle", "No new episodes.")
