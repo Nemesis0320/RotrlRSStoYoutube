@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
-def upload_video(file_path, title, description, playlist_id=None):
+def upload_video(file_path, title, description, tags, playlist_id=None):
     # Load OAuth token.json
     if not os.path.exists("token.json"):
         print("[upload] ERROR: token.json not found")
@@ -20,7 +20,8 @@ def upload_video(file_path, title, description, playlist_id=None):
     body = {
         "snippet": {
             "title": title,
-            "description": description
+            "description": description,
+            "tags": tags.split(",") if tags else []     # <-- ADD THIS
         },
         "status": {
             "privacyStatus": "public"
@@ -76,10 +77,11 @@ def main():
     parser.add_argument("--file", required=True)
     parser.add_argument("--title", required=True)
     parser.add_argument("--description", required=True)
+    parser.add_argument("--tags", default="")
     parser.add_argument("--playlist", default=None)
     args = parser.parse_args()
 
-    vid = upload_video(args.file, args.title, args.description, args.playlist)
+    vid = upload_video(args.file, args.title, args.description, args.tags, args.playlist)
 
     if vid:
         print(vid) 
