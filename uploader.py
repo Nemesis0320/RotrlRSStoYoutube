@@ -244,7 +244,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "-loop", "1",
         "-i", BG_IMAGE,
         "-i", audio,
-        "-filter_complex_script", filter_file,
+        "-filter_script:v", filter_file,
         "-map", "[final_faded]",
         "-map", "1:a",
         "-r", str(VIDEO_FPS),
