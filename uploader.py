@@ -221,27 +221,27 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # FILTERGRAPH (WRITTEN TO FILE AS A SCRIPT)
     # ---------------------------------------------------------
     filter_complex = (
-        f"[0:v]scale={VIDEO_SIZE}[bg];"
-        "color=black@0:s=720x720[mask_base];"
-        "[mask_base]format=rgba[mask_rgba];"
-        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)[mask];"
-        f"[1:a]asplit=2[a_main][a_clip];"
-        f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];"
-        "[wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];"
-        f"[a_clip]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw_raw];"
-        "[wave_clip_raw_raw]pad=720:720:0:720-40:black@0[wave_clip_raw];"
-        "[wave_clip_raw][mask]alphamerge[wave_clip_masked];"
-        "[wave_inner]v360=input=rectilinear:output=fisheye[polar_inner];"
-        "[wave_clip_masked]v360=input=rectilinear:output=fisheye[polar_clip];"
-        "[polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];"
-        "[combined][mask]alphamerge[circ_wave];"
-        "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];"
+        f"[0:v]scale={VIDEO_SIZE}[bg];\n"
+        "color=black@0:s=720x720[mask_base];\n"
+        "[mask_base]format=rgba[mask_rgba];\n"
+        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)[mask];\n"
+        f"[1:a]asplit=2[a_main][a_clip];\n"
+        f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];\n"
+        "[wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];\n"
+        f"[a_clip]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw_raw];\n"
+        "[wave_clip_raw_raw]pad=720:720:0:720-40:black@0[wave_clip_raw];\n"
+        "[wave_clip_raw][mask]alphamerge[wave_clip_masked];\n"
+        "[wave_inner]v360=input=rectilinear:output=fisheye[polar_inner];\n"
+        "[wave_clip_masked]v360=input=rectilinear:output=fisheye[polar_clip];\n"
+        "[polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];\n"
+        "[combined][mask]alphamerge[circ_wave];\n"
+        "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];\n"
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:"
         f'text="{safe_podcast_title}\\\\n{safe_season_label}\\\\n{safe_episode_title}":'
-        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];"
+        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];\n"
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
-        f'text="{safe_ticker_text}":x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];'
-        "[final]fade=t=in:st=0:d=0.8[final_faded]"
+        f'text="{safe_ticker_text}":x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];\n'
+        "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
 
     # Debug: show literal filtergraph
