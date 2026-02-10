@@ -240,14 +240,19 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     # DEBUG: show the literal filtergraph string
     log("FINAL FILTERGRAPH:", repr(filter_complex))
+    with open("filtergraph.txt", "w") as f:
+    f.write(filter_complex)
 
+
+
+    
     cmd = [
         "ffmpeg",
         "-y",
         "-loop", "1",
         "-i", BG_IMAGE,
         "-i", audio,
-        "-filter_complex", filter_complex,
+        "-filter_complex_script", "filtergraph.txt",
         "-map", "[final_faded]",
         "-map", "1:a",
         "-r", str(VIDEO_FPS),
