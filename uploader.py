@@ -252,7 +252,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("FINAL FILTERGRAPH:", repr(filter_complex))
 
     # Write filtergraph to file
-    with open("filtergraph.txt", "w", encoding="utf-8") as f:
+    with open("filtergraph.txt", "w", encoding="utf-8", newline="\n") as f:
         f.write(filter_complex)
 
     # Dump the file in text mode
