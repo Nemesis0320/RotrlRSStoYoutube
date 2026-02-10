@@ -435,6 +435,8 @@ def get_description(entry):
 
 def get_episodes(feed):
     eps = []
+    import re
+
     for e in feed.entries:
         eid = getattr(e, "id", None)
         title = getattr(e, "title", "Untitled")
@@ -442,13 +444,29 @@ def get_episodes(feed):
         description = get_description(e)
         tags = [t.term for t in getattr(e, "tags", [])]
 
-        log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
+        # Extract season and episode numbers
+        m = re.search(r"[Ss]eason\s+(\d+)\s*[Ee]p\.?\s*(\d+)", title)
+        if not m:
+            m = re.search(r"[Ss](\d+)[Ee](\d+)", title)
+
+        if m:
+            season = int(m.group(1))
+            episode = int(m.group(2))
+        else:
+            season = 0
+            episode = 0
 
         if eid and url:
-            eps.append((eid, title, url, description, tags))
+            eps.append((season, episode, eid, title, url, description, tags))
 
-    log("EPISODE LIST BUILT:", len(eps))
-    return eps
+    # Sort oldest → newest
+    eps.sort(key=lambda x: (x[0], x[1]))
+
+    # Strip season/episode numbers before returning
+    final_eps = [(eid, title, url, description, tags) for (_, _, eid, title, url, description, tags) in eps]
+
+    log("EPISODE LIST BUILT:", len(final_eps))
+    return final_eps
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
