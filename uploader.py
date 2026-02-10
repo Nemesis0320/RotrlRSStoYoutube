@@ -129,6 +129,7 @@ def cleanup_files(*paths):
                 os.remove(p)
             except:
                 pass
+log("FFMPEG CMD:", " ".join(cmd))
 
 def run_cmd(cmd):
     log("RUN CMD:", " ".join(cmd))
