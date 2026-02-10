@@ -204,7 +204,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
-        [1:0]asplit=3[a_main][a_glow][a_clip];
+        [1:a:0]asplit=3[a_main][a_glow][a_clip];
 
         [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
 
