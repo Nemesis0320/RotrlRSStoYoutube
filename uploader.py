@@ -254,7 +254,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     with open("filtergraph.txt", "w", encoding="utf-8", newline="") as f:
         f.write(filter_complex)
 
-    # NEW: dump the file so we can see EXACTLY what FFmpeg sees
+    # Dump the file in text mode
     log("---- FILTERGRAPH.TXT CONTENTS ----")
     try:
         with open("filtergraph.txt", "r", encoding="utf-8") as f:
@@ -263,6 +263,16 @@ def render_video(audio, output, episode_title=None, season_label=None):
     except Exception as e:
         log("ERROR READING FILTERGRAPH:", str(e))
     log("---- END FILTERGRAPH.TXT ----")
+
+    # Dump the file in raw bytes
+    log("---- FILTERGRAPH.TXT RAW BYTES ----")
+    try:
+        with open("filtergraph.txt", "rb") as f:
+            raw = f.read()
+        log(raw)
+    except Exception as e:
+        log("ERROR READING RAW BYTES:", str(e))
+    log("---- END RAW BYTES ----")
 
     # ---------------------------------------------------------
     # FFmpeg command using filter_complex_script
