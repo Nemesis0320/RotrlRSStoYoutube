@@ -241,7 +241,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [bg_season]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """
