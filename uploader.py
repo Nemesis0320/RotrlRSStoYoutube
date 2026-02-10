@@ -209,6 +209,9 @@ def render_video(audio, output, episode_title=None, season_label=None):
     safe_episode_title = episode_title.replace("'", r"\'")
     safe_ticker_text = ticker_text.replace("'", r"\'")
 
+    log("EPISODE TITLE:", episode_title)
+    log("TICKER TEXT:", ticker_text)
+    
     filter_complex = (
         f"[0:v]scale={VIDEO_SIZE}[bg];"
         "color=black@0:s=720x720[mask_base];"
