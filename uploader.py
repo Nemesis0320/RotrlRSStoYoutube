@@ -206,7 +206,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         color=black@0:s=720x720[mask_base];
         [mask_base]format=rgba[mask_rgba];
-        [mask_rgba]geq='if((X-360)*(X-360)+(Y-360)*(Y-360) < 330*330, 255, 0)':'128':'128':'if((X-360)*(X-360)+(Y-360)*(Y-360) < 330*330, 255, 0)'[mask];
+        [mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330,255,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330,255,0)[mask];
 
         [1:a]asplit=2[a_main][a_clip];
 
