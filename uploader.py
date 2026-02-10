@@ -452,13 +452,13 @@ def get_episodes(feed):
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url, description in episodes:
+    for eid, title, url, description, tags in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
             log("NEXT EP FOUND:", eid, title)
-            return eid, title, url, description
+            return eid, title, url, description, tags
     log("NO NEW EPISODES")
-    return None, None, None, None
+    return None, None, None, None, None
 
 # Main pipeline
 def process_episode(eid, title, url, description, uploaded, stats):
