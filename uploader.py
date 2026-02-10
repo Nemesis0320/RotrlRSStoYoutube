@@ -263,7 +263,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "-shortest",
         output,
     ]
-
+    log("FFMPEG CMD:", " ".join(cmd))
     out = run_cmd(cmd)
     log("RENDER L3-CIRC OUT:", out)
 
