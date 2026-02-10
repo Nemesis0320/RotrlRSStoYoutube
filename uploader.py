@@ -313,7 +313,7 @@ def full_render_pipeline(title, season_label):
 def upload_video(path, title, description, playlist_id):
     log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
     record_quota_usage(1600)
-    cmd = ["python3", "uploader.py", "--file", output, "--title", title, "--description", description]
+    cmd = ["python3", "uploader.py", "--file", path, "--title", title, "--description", description]
     if playlist_id:
         cmd += ["--playlist", playlist_id]
     out = run_cmd(cmd)
