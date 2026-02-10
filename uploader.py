@@ -205,24 +205,27 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     ticker_text = f"Now Playing: {episode_title}"
 
-    # Escape only apostrophes for drawtext
-    safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
-    safe_season_label = season_label.replace("'", r"\'")
-    safe_episode_title = episode_title.replace("'", r"\'")
-    safe_ticker_text = ticker_text.replace("'", r"\'")
+    # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
+    def esc(s: str) -> str:
+        return s.replace("\\", "\\\\").replace("'", "\\'")
+
+    safe_podcast_title = esc(PODCAST_TITLE)
+    safe_season_label = esc(season_label)
+    safe_episode_title = esc(episode_title)
+    safe_ticker_text = esc(ticker_text)
 
     log("EPISODE TITLE:", episode_title)
     log("TICKER TEXT:", ticker_text)
 
     # ---------------------------------------------------------
-    # FILTERGRAPH (NO INLINE ESCAPE HELL — WRITTEN TO FILE RAW)
+    # FILTERGRAPH (WRITTEN TO FILE AS A SCRIPT)
     # ---------------------------------------------------------
     filter_complex = (
         f"[0:v]scale={VIDEO_SIZE}[bg];"
         "color=black@0:s=720x720[mask_base];"
         "[mask_base]format=rgba[mask_rgba];"
         # GEQ — commas escaped, colons NOT escaped
-        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\\\,255\\\\,0)[mask];"
+        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0):128:128:if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)[mask];"
         # Audio split + waveforms
         f"[1:a]asplit=2[a_main][a_clip];"
         f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];"
@@ -242,7 +245,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
         f'text="{safe_podcast_title}\\n{safe_season_label}\\n{safe_episode_title}":'
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white:[bg_text];"
         # Ticker
-        f"[bg_text]drawtext=fontfile={FONT_FILE}:text=\"{safe_ticker_text}\":x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];"
+        f"[bg_text]drawtext=fontfile={FONT_FILE}:"
+        f'text="{safe_ticker_text}":x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white:[final];'
         # Fade in
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
@@ -250,8 +254,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # Debug: show literal filtergraph
     log("FINAL FILTERGRAPH:", repr(filter_complex))
 
-    # Write filtergraph to file (static FFmpeg WILL read this)
-    with open("filtergraph.txt", "w") as f:
+    # Write filtergraph to file
+    with open("filtergraph.txt", "w", encoding="utf-8") as f:
         f.write(filter_complex)
 
     # ---------------------------------------------------------
