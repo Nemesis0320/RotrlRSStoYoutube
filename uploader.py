@@ -218,8 +218,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [wave_clip_raw][mask]alphamerge[wave_clip_masked];
 
-        [wave_inner]v360=input=rectilinear:output=polar[polar_inner];
-        [wave_clip_masked]v360=input=rectilinear:output=polar[polar_clip];
+        [wave_inner]v360=input=rectilinear:output=fisheye[polar_inner];
+        [wave_clip_masked]v360=input=rectilinear:output=fisheye[polar_clip];
 
         [polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
 
