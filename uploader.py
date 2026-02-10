@@ -233,13 +233,18 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[final]fade=t=in:st=0:d=0.8[final_faded]"
     )
 
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".ffgraph") as tf:
+        tf.write(filter_complex.encode("utf-8"))
+        filter_file = tf.name
+
     cmd = [
         "ffmpeg",
         "-y",
         "-loop", "1",
         "-i", BG_IMAGE,
         "-i", audio,
-        "-filter_complex", filter_complex,
+        "-filter_complex_script", filter_file,
         "-map", "[final_faded]",
         "-map", "1:a",
         "-r", str(VIDEO_FPS),
