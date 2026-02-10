@@ -30,15 +30,13 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install FFmpeg (static build)
+      # ---------------------------------------------------------
+      # NEW: Use Ubuntu's FFmpeg (includes drawtext)
+      # ---------------------------------------------------------
+      - name: Install FFmpeg (Ubuntu build with drawtext)
         run: |
           sudo apt-get update
-          wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          tar -xf ffmpeg-release-amd64-static.tar.xz
-          cd ffmpeg-*-static
-          sudo mv ffmpeg /usr/local/bin/
-          sudo mv ffprobe /usr/local/bin/
-          cd ..
+          sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
