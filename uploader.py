@@ -239,6 +239,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ffgraph", dir="/tmp") as tf:
         tf.write(filter_complex.encode("utf-8"))
         filter_file = tf.name
+        # DEBUG: read back the file to confirm it is complete
         with open(filter_file, "r") as f:
             print("FILTER FILE CONTENT:\n", f.read())
 
