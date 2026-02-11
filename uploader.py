@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import urllib.request
+import xml.etree.ElementTree as ET
 
 # ----------------------------------------------------------------------
 # Configuration
@@ -18,6 +19,49 @@ LOG_PREFIX = "[uploader]"
 
 def log(*args):
     print(LOG_PREFIX, *args, flush=True)
+
+# ----------------------------------------------------------------------
+# RSS handling: fetch feed, extract latest enclosure URL
+# ----------------------------------------------------------------------
+def fetch_rss(url: str) -> str:
+    log("FETCHING RSS FEED FROM:", url)
+    try:
+        with urllib.request.urlopen(url) as resp:
+            charset = resp.headers.get_content_charset() or "utf-8"
+            data = resp.read().decode(charset, errors="replace")
+        log("RSS FEED FETCHED, LENGTH:", len(data))
+        return data
+    except Exception as e:
+        log("ERROR FETCHING RSS FEED:", str(e))
+        sys.exit(1)
+
+def extract_latest_enclosure_url(rss_xml: str) -> str:
+    log("PARSING RSS FEED FOR LATEST ENCLOSURE")
+    try:
+        root = ET.fromstring(rss_xml)
+    except Exception as e:
+        log("ERROR PARSING RSS XML:", str(e))
+        sys.exit(1)
+
+    channel = root.find("channel")
+    if channel is None:
+        # Some feeds use namespaces; try a generic search
+        channel = root.find("./*[@*]")
+    if channel is None:
+        log("ERROR: No <channel> element found in RSS")
+        sys.exit(1)
+
+    # Find first <item> with an <enclosure url="...">
+    for item in channel.findall("item"):
+        enclosure = item.find("enclosure")
+        if enclosure is not None:
+            url = enclosure.get("url")
+            if url:
+                log("FOUND ENCLOSURE URL:", url)
+                return url
+
+    log("ERROR: No <enclosure> with url attribute found in RSS")
+    sys.exit(1)
 
 # ----------------------------------------------------------------------
 # Audio download: ensures part1.mp3 always exists
@@ -73,7 +117,6 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
     )
     ticker_text = _ff_escape_text(ticker_text)
 
-    # Only one escaped comma needed in the x-expression: '\,'
     filter_complex = (
         f"[0:v]scale={VIDEO_SIZE}[bg];\n"
         "color=black@0:s=720x720[mask_base];\n"
@@ -154,15 +197,15 @@ def main():
     episode_title = "Season 6 Spires of Xin-Shalast Teaser"
     ticker_text = f"Now Playing: {episode_title}"
 
-    # Download audio first
-    audio_url = os.environ.get("RSS_URL")
-    if not audio_url:
+    rss_url = os.environ.get("RSS_URL")
+    if not rss_url:
         log("ERROR: RSS_URL environment variable not set")
         sys.exit(1)
 
-    download_audio(audio_url, AUDIO_FILE)
+    rss_xml = fetch_rss(rss_url)
+    enclosure_url = extract_latest_enclosure_url(rss_xml)
+    download_audio(enclosure_url, AUDIO_FILE)
 
-    # Validate required files
     for path in (BG_IMAGE, AUDIO_FILE, FONT_FILE):
         if not os.path.exists(path):
             log("ERROR: Missing required file:", path)
