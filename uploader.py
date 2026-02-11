@@ -2,17 +2,10 @@
 import os
 import sys
 import re
-import json
-import base64
 import subprocess
-from typing import List, Optional, Tuple
-
 import feedparser
 import requests
-
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from typing import List, Optional, Tuple
 
 LOG_PREFIX = "[uploader]"
 
@@ -23,15 +16,7 @@ def log(*args):
 # EPISODE MODEL
 # ------------------------------------------------------------
 class Episode:
-    def __init__(
-        self,
-        guid: str,
-        title: str,
-        enclosure_url: str,
-        pubdate: Optional[str],
-        season: Optional[int],
-        episode: Optional[int],
-    ):
+    def __init__(self, guid, title, enclosure_url, pubdate, season, episode):
         self.guid = guid
         self.title = title
         self.enclosure_url = enclosure_url
@@ -45,7 +30,7 @@ class Episode:
         return (s, e, self.pubdate or "", self.title)
 
 # ------------------------------------------------------------
-# RSS / EPISODE DISCOVERY
+# RSS PARSING
 # ------------------------------------------------------------
 SEASON_EPISODE_REGEXES = [
     re.compile(r"Season\s+(\d+)\s*[,:\- ]+\s*Episode\s+(\d+)", re.IGNORECASE),
@@ -53,32 +38,25 @@ SEASON_EPISODE_REGEXES = [
     re.compile(r"Season\s+(\d+)\s+Episode\s+(\d+)", re.IGNORECASE),
 ]
 
-def parse_season_episode(title: str) -> Tuple[Optional[int], Optional[int]]:
+def parse_season_episode(title: str):
     for rx in SEASON_EPISODE_REGEXES:
         m = rx.search(title)
         if m:
             try:
-                season = int(m.group(1))
-                episode = int(m.group(2))
-                return season, episode
+                return int(m.group(1)), int(m.group(2))
             except ValueError:
-                continue
+                pass
     return None, None
 
-def get_episodes_from_rss(rss_url: str) -> List[Episode]:
+def get_episodes_from_rss(rss_url: str):
     log("FETCHING RSS FEED:", rss_url)
     feed = feedparser.parse(rss_url)
 
     if feed.bozo:
-        log("ERROR PARSING RSS FEED:", feed.bozo_exception)
+        log("ERROR PARSING RSS:", feed.bozo_exception)
         sys.exit(1)
 
-    if not feed.entries:
-        log("ERROR: RSS FEED HAS NO ENTRIES")
-        sys.exit(1)
-
-    episodes: List[Episode] = []
-
+    episodes = []
     for entry in feed.entries:
         title = getattr(entry, "title", "").strip()
         guid = getattr(entry, "id", "") or getattr(entry, "guid", "") or title
@@ -94,31 +72,29 @@ def get_episodes_from_rss(rss_url: str) -> List[Episode]:
 
         season, ep = parse_season_episode(title)
 
-        episodes.append(
-            Episode(
-                guid=guid,
-                title=title,
-                enclosure_url=enclosure_url,
-                pubdate=pubdate,
-                season=season,
-                episode=ep,
-            )
-        )
+        episodes.append(Episode(
+            guid=guid,
+            title=title,
+            enclosure_url=enclosure_url,
+            pubdate=pubdate,
+            season=season,
+            episode=ep,
+        ))
 
     if not episodes:
-        log("ERROR: NO VALID EPISODES FOUND IN RSS")
+        log("ERROR: NO EPISODES FOUND")
         sys.exit(1)
 
     episodes.sort(key=lambda e: e.sort_key())
-    log(f"FOUND {len(episodes)} EPISODES AFTER PARSING/SORTING")
+    log(f"FOUND {len(episodes)} EPISODES")
     return episodes
 
 # ------------------------------------------------------------
-# PROCESSED EPISODE TRACKING
+# PROCESSED TRACKING
 # ------------------------------------------------------------
 PROCESSED_FILE = "processed_episodes.txt"
 
-def load_processed_guids() -> set:
+def load_processed_guids():
     if not os.path.exists(PROCESSED_FILE):
         return set()
     with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
@@ -128,60 +104,45 @@ def save_processed_guid(guid: str):
     with open(PROCESSED_FILE, "a", encoding="utf-8") as f:
         f.write(guid + "\n")
 
-def pick_next_episode(episodes: List[Episode]) -> Optional[Episode]:
+def pick_next_episode(episodes):
     processed = load_processed_guids()
     for ep in episodes:
         if ep.guid not in processed:
-            log("NEXT EPISODE TO PROCESS:", ep.title)
-            if ep.season is not None and ep.episode is not None:
-                log(f"  Parsed as Season {ep.season}, Episode {ep.episode}")
+            log("NEXT EPISODE:", ep.title)
             return ep
-    log("NO UNPROCESSED EPISODES LEFT")
+    log("NO UNPROCESSED EPISODES")
     return None
 
 # ------------------------------------------------------------
 # AUDIO DOWNLOAD
 # ------------------------------------------------------------
 def download_audio(url: str, output_path: str):
-    log("DOWNLOADING AUDIO FROM:", url)
-
+    log("DOWNLOADING AUDIO:", url)
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0 Safari/537.36"
-        ),
+        "User-Agent": "Mozilla/5.0",
         "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
         "Referer": url.rsplit("/", 1)[0] + "/",
     }
 
-    try:
-        with requests.get(url, headers=headers, stream=True, timeout=60) as r:
-            if r.status_code != 200:
-                log("ERROR DOWNLOADING AUDIO: HTTP", r.status_code)
-                sys.exit(1)
+    with requests.get(url, headers=headers, stream=True, timeout=60) as r:
+        if r.status_code != 200:
+            log("ERROR DOWNLOADING AUDIO:", r.status_code)
+            sys.exit(1)
 
-            with open(output_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+        with open(output_path, "wb") as f:
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    f.write(chunk)
 
-        log("AUDIO DOWNLOADED TO:", output_path)
-
-    except Exception as e:
-        log("ERROR DOWNLOADING AUDIO:", str(e))
-        sys.exit(1)
+    log("AUDIO SAVED:", output_path)
 
 # ------------------------------------------------------------
-# FILTERGRAPH (MINIMAL, STABLE)
+# FILTERGRAPH (FIXED VERSION)
 # ------------------------------------------------------------
 def build_filtergraph(podcast_title: str, season_label: str, episode_title: str) -> str:
     title_text = (
-        podcast_title.replace("'", r"\'") +
-        r"\n" +
-        season_label.replace("'", r"\'") +
-        r"\n" +
+        podcast_title.replace("'", r"\'") + r"\n" +
+        season_label.replace("'", r"\'") + r"\n" +
         episode_title.replace("'", r"\'")
     )
 
@@ -199,10 +160,9 @@ def build_filtergraph(podcast_title: str, season_label: str, episode_title: str)
     )
 
 def debug_filtergraph(path: str, content: str):
-    log("FINAL FILTERGRAPH:", repr(content))
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
-    log("WROTE FILTERGRAPH TO:", os.path.abspath(path))
+    log("FILTERGRAPH WRITTEN:", os.path.abspath(path))
 
 # ------------------------------------------------------------
 # FFMPEG RENDER
@@ -217,7 +177,7 @@ def run_ffmpeg(output_path: str):
         "-i", "part1.mp3",
         "-filter_complex_script", os.path.abspath("filtergraph.txt"),
         "-map", "[final_faded]",
-        "-map", "1:a",
+        "-map", "1:a:0",
         "-r", "12",
         "-c:v", "libx264",
         "-preset", "veryfast",
@@ -229,80 +189,17 @@ def run_ffmpeg(output_path: str):
         output_path,
     ]
 
-    log("RUNNING FFMPEG:", " ".join(cmd))
-    proc = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-    log("FFMPEG STDERR:", proc.stderr)
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    log(proc.stderr)
 
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
 
 # ------------------------------------------------------------
-# YOUTUBE AUTH / UPLOAD
+# UPLOAD STUB
 # ------------------------------------------------------------
-def load_youtube_credentials() -> Credentials:
-    token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
-    token_b64 = os.environ.get("YOUTUBE_TOKEN_JSON_B64")
-
-    if token_b64 and not token_json:
-        token_json = base64.b64decode(token_b64).decode("utf-8")
-
-    if not token_json:
-        log("ERROR: YOUTUBE_TOKEN_JSON or YOUTUBE_TOKEN_JSON_B64 not set")
-        sys.exit(1)
-
-    info = json.loads(token_json)
-    creds = Credentials.from_authorized_user_info(info, scopes=["https://www.googleapis.com/auth/youtube.upload"])
-    return creds
-
 def upload_to_youtube(video_path: str, title: str, description: str):
-    creds = load_youtube_credentials()
-    youtube = build("youtube", "v3", credentials=creds)
-
-    body = {
-        "snippet": {
-            "title": title,
-            "description": description,
-            "categoryId": "22",  # People & Blogs (adjust if you like)
-        },
-        "status": {
-            "privacyStatus": "public",
-        },
-    }
-
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
-
-    log("STARTING YOUTUBE UPLOAD:", video_path)
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media,
-    )
-
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            log(f"UPLOAD PROGRESS: {int(status.progress() * 100)}%")
-
-    log("YOUTUBE UPLOAD COMPLETE:", response.get("id"))
-
-# ------------------------------------------------------------
-# DISCORD NOTIFY (OPTIONAL)
-# ------------------------------------------------------------
-def notify_discord(message: str):
-    webhook = os.environ.get("DISCORD_WEBHOOK_URL")
-    if not webhook:
-        return
-    try:
-        requests.post(webhook, json={"content": message}, timeout=10)
-    except Exception as e:
-        log("DISCORD NOTIFY FAILED:", str(e))
+    log("UPLOAD STUB:", video_path, title)
 
 # ------------------------------------------------------------
 # MAIN
@@ -312,39 +209,30 @@ def main():
 
     rss_url = os.environ.get("RSS_URL")
     if not rss_url:
-        log("ERROR: RSS_URL environment variable not set")
+        log("ERROR: RSS_URL not set")
         sys.exit(1)
 
     episodes = get_episodes_from_rss(rss_url)
     next_ep = pick_next_episode(episodes)
     if not next_ep:
-        notify_discord("No unprocessed episodes left.")
         sys.exit(0)
 
-    if next_ep.season is not None:
-        season_label = f"Season {next_ep.season}"
-    else:
-        season_label = "Season ?"
-
+    season_label = f"Season {next_ep.season}" if next_ep.season else "Season ?"
     episode_title = next_ep.title
 
     download_audio(next_ep.enclosure_url, "part1.mp3")
 
     required = [
         "assets/1200x1200bf.png",
-        "part1.mp3",
         "assets/IMFellEnglishSC.ttf",
+        "part1.mp3",
     ]
     for path in required:
         if not os.path.exists(path):
-            log("ERROR: Missing required file:", path)
+            log("ERROR: Missing file:", path)
             sys.exit(1)
 
-    filtergraph = build_filtergraph(
-        podcast_title=podcast_title,
-        season_label=season_label,
-        episode_title=episode_title,
-    )
+    filtergraph = build_filtergraph(podcast_title, season_label, episode_title)
     debug_filtergraph("filtergraph.txt", filtergraph)
 
     safe_title = re.sub(r"[^\w\-]+", "_", next_ep.title).strip("_")
@@ -352,16 +240,11 @@ def main():
 
     run_ffmpeg(output_video)
 
-    upload_to_youtube(
-        video_path=output_video,
-        title=next_ep.title,
-        description=next_ep.title,
-    )
-
     save_processed_guid(next_ep.guid)
-    notify_discord(f"Uploaded episode: {next_ep.title}")
 
-    log("DONE WITH EPISODE:", next_ep.title)
+    upload_to_youtube(output_video, next_ep.title, next_ep.title)
+
+    log("DONE:", next_ep.title)
 
 if __name__ == "__main__":
     main()
