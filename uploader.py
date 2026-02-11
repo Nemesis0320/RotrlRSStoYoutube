@@ -21,7 +21,7 @@ def log(*args):
     print(LOG_PREFIX, *args, flush=True)
 
 # ----------------------------------------------------------------------
-# RSS handling via feedparser (bypasses 403 on XML)
+# RSS handling via feedparser
 # ----------------------------------------------------------------------
 def get_latest_enclosure_url(rss_url: str) -> str:
     log("FETCHING RSS FEED VIA FEEDPARSER:", rss_url)
@@ -46,7 +46,7 @@ def get_latest_enclosure_url(rss_url: str) -> str:
     return url
 
 # ----------------------------------------------------------------------
-# Audio download using requests with browser headers (bypasses 403)
+# Audio download using requests with browser headers
 # ----------------------------------------------------------------------
 def download_audio(url: str, output_path: str):
     log("DOWNLOADING AUDIO FROM:", url)
@@ -80,15 +80,12 @@ def download_audio(url: str, output_path: str):
         sys.exit(1)
 
 # ----------------------------------------------------------------------
-# Text escaping for drawtext inside a filtergraph script
+# Text escaping for script file (only escape double quotes)
 # ----------------------------------------------------------------------
 def _ff_escape_text(s: str) -> str:
     if not s:
         return ""
-    s = s.replace("\\", "\\\\")
-    s = s.replace(":", r"\:")
-    s = s.replace("\n", r"\n")
-    return s
+    return s.replace('"', r'\"')
 
 # ----------------------------------------------------------------------
 # Unified debug exporter for filtergraph
@@ -121,12 +118,15 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
     )
     ticker_text = _ff_escape_text(ticker_text)
 
+    geq_expr = (
+        "if(((X-360)*(X-360)+(Y-360)*(Y-360)) < (330*330),255,0)"
+    )
+
     return (
         f"[0:v]scale={VIDEO_SIZE}[bg];\n"
         "color=black@0:s=720x720[mask_base];\n"
         "[mask_base]format=rgba[mask_rgba];\n"
-        "[mask_rgba]geq=if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0):128:128:"
-        "if((X-360)*(X-360)+(Y-360)*(Y-360)<330*330\\,255\\,0)[mask];\n"
+        f"[mask_rgba]geq={geq_expr}:128:128:{geq_expr}[mask];\n"
         "[1:a]asplit=2[a_main][a_clip];\n"
         f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner_raw];\n"
         "[wave_inner_raw]pad=720:720:0:720-40:black@0[wave_inner];\n"
@@ -141,7 +141,7 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:text=\"{title_text}\":"
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];\n"
         f"[bg_text]drawtext=fontfile={FONT_FILE}:text=\"{ticker_text}\":"
-        "x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];\n"
+        "x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];\n"
         "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
 
