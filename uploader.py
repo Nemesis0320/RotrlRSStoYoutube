@@ -208,7 +208,9 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
     def _ff_escape_text(s: str) -> str:
-        return s.replace(":", r"\:")
+        # 1) Remove apostrophes completely (Clinton's -> Clintons)
+        # 2) Escape colons for FFmpeg
+        return s.replace("'", "").replace(":", r"\:")
 
     safe_podcast_title_esc = _ff_escape_text(PODCAST_TITLE)
     safe_season_label_esc = _ff_escape_text(season_label)
@@ -240,7 +242,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         # --- FIXED DRAW TEXT BLOCK ---
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:"
-        f"text='{safe_podcast_title_esc}\\n{safe_season_label_esc}\\n{safe_episode_title_esc}':"
+        f"text='{safe_podcast_title_esc.replace(\"'\", \"\\\\'\")}\\n{safe_season_label_esc}\\n{safe_episode_title_esc}':"
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];\n"
 
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
