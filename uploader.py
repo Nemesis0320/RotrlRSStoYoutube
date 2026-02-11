@@ -110,14 +110,12 @@ def debug_filtergraph(path: str, content: str):
     log("---- END RAW BYTES ----")
 
 # ----------------------------------------------------------------------
-# Build filtergraph script content
+# Build filtergraph script content (NO TICKER)
 # ----------------------------------------------------------------------
-def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
+def build_filtergraph(podcast_title, season_label, episode_title):
     title_text = _ff_escape_text(
         f"{podcast_title}\n{season_label}\n{episode_title}"
     )
-
-    ticker_text = _ff_escape_text(ticker_text.replace("\n", " "))
 
     geq_expr = (
         "if(((X-360)*(X-360)+(Y-360)*(Y-360)) < (330*330),255,0)"
@@ -140,9 +138,7 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
         "[combined][mask]alphamerge [circ_wave];\n"
         "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2 [bg_wave];\n"
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:text=\"{title_text}\":"
-        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white [bg_text];\n"
-        f"[bg_text]drawtext=fontfile={FONT_FILE}:text=\"{ticker_text}\":"
-        "x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white [final];\n"
+        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white [final];\n"
         "[final]fade=t=in:st=0:d=0.8 [final_faded]\n"
     )
 
@@ -198,7 +194,6 @@ def main():
     podcast_title = "Clintons Core Classics"
     season_label = "Season 6"
     episode_title = "Season 6 Spires of Xin-Shalast Teaser"
-    ticker_text = f"Now Playing: {episode_title}"
 
     rss_url = os.environ.get("RSS_URL")
     if not rss_url:
@@ -217,7 +212,6 @@ def main():
         podcast_title,
         season_label,
         episode_title,
-        ticker_text,
     )
 
     debug_filtergraph(FILTERGRAPH_PATH, filtergraph)
