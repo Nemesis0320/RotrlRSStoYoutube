@@ -2,6 +2,7 @@
 import os
 import sys
 import subprocess
+import urllib.request
 
 # ----------------------------------------------------------------------
 # Configuration
@@ -17,6 +18,18 @@ LOG_PREFIX = "[uploader]"
 
 def log(*args):
     print(LOG_PREFIX, *args, flush=True)
+
+# ----------------------------------------------------------------------
+# Audio download: ensures part1.mp3 always exists
+# ----------------------------------------------------------------------
+def download_audio(url: str, output_path: str):
+    log("DOWNLOADING AUDIO FROM:", url)
+    try:
+        urllib.request.urlretrieve(url, output_path)
+        log("AUDIO DOWNLOADED TO:", output_path)
+    except Exception as e:
+        log("ERROR DOWNLOADING AUDIO:", str(e))
+        sys.exit(1)
 
 # ----------------------------------------------------------------------
 # Text escaping for drawtext inside a filtergraph script
@@ -141,6 +154,15 @@ def main():
     episode_title = "Season 6 Spires of Xin-Shalast Teaser"
     ticker_text = f"Now Playing: {episode_title}"
 
+    # Download audio first
+    audio_url = os.environ.get("RSS_URL")
+    if not audio_url:
+        log("ERROR: RSS_URL environment variable not set")
+        sys.exit(1)
+
+    download_audio(audio_url, AUDIO_FILE)
+
+    # Validate required files
     for path in (BG_IMAGE, AUDIO_FILE, FONT_FILE):
         if not os.path.exists(path):
             log("ERROR: Missing required file:", path)
