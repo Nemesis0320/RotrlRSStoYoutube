@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import os
 import sys
+import re
 import subprocess
 import feedparser
 import requests
+from typing import List, Optional, Tuple, Dict, Any
 
 LOG_PREFIX = "[uploader]"
 
@@ -11,10 +13,54 @@ def log(*args):
     print(LOG_PREFIX, *args, flush=True)
 
 # ------------------------------------------------------------
-# RSS FETCH
+# EPISODE MODEL
 # ------------------------------------------------------------
-def get_latest_enclosure_url(rss_url: str) -> str:
-    log("FETCHING RSS FEED VIA FEEDPARSER:", rss_url)
+class Episode:
+    def __init__(
+        self,
+        guid: str,
+        title: str,
+        enclosure_url: str,
+        pubdate: Optional[str],
+        season: Optional[int],
+        episode: Optional[int],
+    ):
+        self.guid = guid
+        self.title = title
+        self.enclosure_url = enclosure_url
+        self.pubdate = pubdate
+        self.season = season
+        self.episode = episode
+
+    def sort_key(self):
+        # Season/Episode first, then pubdate, then title
+        s = self.season if self.season is not None else 9999
+        e = self.episode if self.episode is not None else 9999
+        return (s, e, self.pubdate or "", self.title)
+
+# ------------------------------------------------------------
+# RSS / EPISODE DISCOVERY
+# ------------------------------------------------------------
+SEASON_EPISODE_REGEXES = [
+    re.compile(r"Season\s+(\d+)\s*[,:\- ]+\s*Episode\s+(\d+)", re.IGNORECASE),
+    re.compile(r"S(\d+)\s*E(\d+)", re.IGNORECASE),
+    re.compile(r"Season\s+(\d+)\s+Episode\s+(\d+)", re.IGNORECASE),
+]
+
+def parse_season_episode(title: str) -> Tuple[Optional[int], Optional[int]]:
+    for rx in SEASON_EPISODE_REGEXES:
+        m = rx.search(title)
+        if m:
+            try:
+                season = int(m.group(1))
+                episode = int(m.group(2))
+                return season, episode
+            except ValueError:
+                continue
+    return None, None
+
+def get_episodes_from_rss(rss_url: str) -> List[Episode]:
+    log("FETCHING RSS FEED:", rss_url)
     feed = feedparser.parse(rss_url)
 
     if feed.bozo:
@@ -25,15 +71,67 @@ def get_latest_enclosure_url(rss_url: str) -> str:
         log("ERROR: RSS FEED HAS NO ENTRIES")
         sys.exit(1)
 
-    entry = feed.entries[0]
+    episodes: List[Episode] = []
 
-    if not entry.enclosures:
-        log("ERROR: LATEST ENTRY HAS NO ENCLOSURES")
+    for entry in feed.entries:
+        title = getattr(entry, "title", "").strip()
+        guid = getattr(entry, "id", "") or getattr(entry, "guid", "") or title
+        pubdate = getattr(entry, "published", None)
+
+        if not getattr(entry, "enclosures", None):
+            continue
+
+        enclosure = entry.enclosures[0]
+        enclosure_url = getattr(enclosure, "href", None)
+        if not enclosure_url:
+            continue
+
+        season, ep = parse_season_episode(title)
+
+        episodes.append(
+            Episode(
+                guid=guid,
+                title=title,
+                enclosure_url=enclosure_url,
+                pubdate=pubdate,
+                season=season,
+                episode=ep,
+            )
+        )
+
+    if not episodes:
+        log("ERROR: NO VALID EPISODES FOUND IN RSS")
         sys.exit(1)
 
-    url = entry.enclosures[0].href
-    log("FOUND ENCLOSURE URL:", url)
-    return url
+    episodes.sort(key=lambda e: e.sort_key())
+    log(f"FOUND {len(episodes)} EPISODES AFTER PARSING/SORTING")
+    return episodes
+
+# ------------------------------------------------------------
+# PROCESSED EPISODE TRACKING
+# ------------------------------------------------------------
+PROCESSED_FILE = "processed_episodes.txt"
+
+def load_processed_guids() -> set:
+    if not os.path.exists(PROCESSED_FILE):
+        return set()
+    with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+def save_processed_guid(guid: str):
+    with open(PROCESSED_FILE, "a", encoding="utf-8") as f:
+        f.write(guid + "\n")
+
+def pick_next_episode(episodes: List[Episode]) -> Optional[Episode]:
+    processed = load_processed_guids()
+    for ep in episodes:
+        if ep.guid not in processed:
+            log("NEXT EPISODE TO PROCESS:", ep.title)
+            if ep.season is not None and ep.episode is not None:
+                log(f"  Parsed as Season {ep.season}, Episode {ep.episode}")
+            return ep
+    log("NO UNPROCESSED EPISODES LEFT")
+    return None
 
 # ------------------------------------------------------------
 # AUDIO DOWNLOAD
@@ -53,7 +151,7 @@ def download_audio(url: str, output_path: str):
     }
 
     try:
-        with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+        with requests.get(url, headers=headers, stream=True, timeout=60) as r:
             if r.status_code != 200:
                 log("ERROR DOWNLOADING AUDIO: HTTP", r.status_code)
                 sys.exit(1)
@@ -70,9 +168,9 @@ def download_audio(url: str, output_path: str):
         sys.exit(1)
 
 # ------------------------------------------------------------
-# FILTERGRAPH (NO MASKS, NO FISHEYE, NO MODES)
+# FILTERGRAPH (MINIMAL, STABLE)
 # ------------------------------------------------------------
-def build_filtergraph(podcast_title, season_label, episode_title):
+def build_filtergraph(podcast_title: str, season_label: str, episode_title: str) -> str:
     title_text = (
         podcast_title.replace("'", r"\'") +
         r"\n" +
@@ -82,48 +180,28 @@ def build_filtergraph(podcast_title, season_label, episode_title):
     )
 
     return (
-        # Scale/crop artwork
         "[0:v]scale=720:-1, crop=720:720, format=rgba[art];\n"
-
-        # Basic waveform (no mode=, no colors=)
         "[1:a]showwavespic=s=720x120,format=rgba[vis_raw];\n"
-
-        # Tint red
         "[vis_raw]colorchannelmixer=rr=1:gg=0:bb=0[vis_red];\n"
-
-        # Tint gold
         "[vis_raw]colorchannelmixer=rr=1:gg=0.84:bb=0[vis_gold];\n"
-
-        # Combine
         "[vis_red][vis_gold]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
-
-        # Overlay waveform at bottom
         "[art][vis]overlay=x=0:y=600[with_vis];\n"
-
-        # Add text
         f"[with_vis]drawtext=fontfile=assets/IMFellEnglishSC.ttf:"
         f"text='{title_text}':x=(w-text_w)/2:y=40:fontsize=32:"
         f"line_spacing=10:fontcolor=white[with_text];\n"
-
-        # Fade-in
         "[with_text]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
 
-# ------------------------------------------------------------
-# DEBUG DUMP
-# ------------------------------------------------------------
 def debug_filtergraph(path: str, content: str):
     log("FINAL FILTERGRAPH:", repr(content))
-
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
-
     log("WROTE FILTERGRAPH TO:", os.path.abspath(path))
 
 # ------------------------------------------------------------
-# RUN FFMPEG
+# FFMPEG RENDER
 # ------------------------------------------------------------
-def run_ffmpeg():
+def run_ffmpeg(output_path: str):
     cmd = [
         "ffmpeg",
         "-loglevel", "debug",
@@ -142,9 +220,10 @@ def run_ffmpeg():
         "-c:a", "aac",
         "-b:a", "64k",
         "-shortest",
-        "final.mp4",
+        output_path,
     ]
 
+    log("RUNNING FFMPEG:", " ".join(cmd))
     proc = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
@@ -152,48 +231,87 @@ def run_ffmpeg():
         text=True,
     )
 
-    log("CMD STDERR:", proc.stderr)
+    log("FFMPEG STDERR:", proc.stderr)
 
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
+
+# ------------------------------------------------------------
+# YOUTUBE UPLOAD STUB
+# ------------------------------------------------------------
+def upload_to_youtube(video_path: str, title: str, description: str):
+    """
+    Plug your existing YouTube upload logic here.
+    This stub is intentionally minimal so we don't guess your auth/flow.
+    """
+    log("UPLOAD STUB:", "Would upload", video_path, "with title:", title)
+    # TODO: integrate your real YouTube uploader here.
 
 # ------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------
 def main():
     podcast_title = "Clintons Core Classics"
-    season_label = "Season 6"
-    episode_title = "Season 6 Spires of Xin-Shalast Teaser"
 
     rss_url = os.environ.get("RSS_URL")
     if not rss_url:
         log("ERROR: RSS_URL environment variable not set")
         sys.exit(1)
 
-    enclosure_url = get_latest_enclosure_url(rss_url)
-    download_audio(enclosure_url, "part1.mp3")
+    episodes = get_episodes_from_rss(rss_url)
+    next_ep = pick_next_episode(episodes)
+    if not next_ep:
+        sys.exit(0)
 
+    # Build labels
+    if next_ep.season is not None:
+        season_label = f"Season {next_ep.season}"
+    else:
+        season_label = "Season ?"
+
+    # Episode title for on-screen text: strip leading season/episode noise if desired
+    episode_title = next_ep.title
+
+    # Download audio
+    download_audio(next_ep.enclosure_url, "part1.mp3")
+
+    # Check required assets
     required = [
         "assets/1200x1200bf.png",
         "part1.mp3",
         "assets/IMFellEnglishSC.ttf",
     ]
-
     for path in required:
         if not os.path.exists(path):
             log("ERROR: Missing required file:", path)
             sys.exit(1)
 
+    # Build filtergraph
     filtergraph = build_filtergraph(
-        podcast_title,
-        season_label,
-        episode_title,
+        podcast_title=podcast_title,
+        season_label=season_label,
+        episode_title=episode_title,
+    )
+    debug_filtergraph("filtergraph.txt", filtergraph)
+
+    # Output filename
+    safe_title = re.sub(r"[^\w\-]+", "_", next_ep.title).strip("_")
+    output_video = f"{safe_title or 'episode'}.mp4"
+
+    # Render
+    run_ffmpeg(output_video)
+
+    # Mark processed
+    save_processed_guid(next_ep.guid)
+
+    # Upload stub
+    upload_to_youtube(
+        video_path=output_video,
+        title=next_ep.title,
+        description=next_ep.title,
     )
 
-    debug_filtergraph("filtergraph.txt", filtergraph)
-    run_ffmpeg()
-
-    log("Rendering complete: final.mp4")
+    log("DONE WITH EPISODE:", next_ep.title)
 
 if __name__ == "__main__":
     main()
