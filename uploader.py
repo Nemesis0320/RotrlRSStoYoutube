@@ -85,9 +85,9 @@ def build_filtergraph(podcast_title, season_label, episode_title):
         "[0:v]scale=720:720:force_original_aspect_ratio=cover,"
         "crop=720:720,format=rgba[art];\n"
 
-        "color=size=720x720:color=black@0:rate=12:format=rgba[mask_base];\n"
-        "[mask_base]geometric=type=circle:x=360:y=360:r=330:color=white@1.0[mask_solid];\n"
-        "[mask_solid]boxblur=20:20[mask_feather];\n"
+        "color=size=720x720:color=black@0[mask_base];\n"
+        "[mask_base]drawbox=x=30:y=30:w=660:h=660:color=white@1.0:radius=330[mask_circle];\n"
+        "[mask_circle]boxblur=20:20[mask_feather];\n"
 
         "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=gold,format=rgba[vis_gold];\n"
         "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=red,format=rgba[vis_red];\n"
