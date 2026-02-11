@@ -70,7 +70,7 @@ def download_audio(url: str, output_path: str):
         sys.exit(1)
 
 # ------------------------------------------------------------
-# FILTERGRAPH GENERATOR (FEATHERED MASK)
+# FILTERGRAPH (NO MASK, NO CIRCLE, NO FISHEYE)
 # ------------------------------------------------------------
 def build_filtergraph(podcast_title, season_label, episode_title):
     title_text = (
@@ -82,33 +82,24 @@ def build_filtergraph(podcast_title, season_label, episode_title):
     )
 
     return (
-        # FIXED SCALE LINE — guaranteed compatible
+        # Scale and crop artwork to 720x720
         "[0:v]scale=720:-1, crop=720:720, format=rgba[art];\n"
 
-        # Feathered circular mask using only core filters
-        "color=size=720x720:color=black@0[mask_base];\n"
-        "[mask_base]drawbox=x=30:y=30:w=660:h=660:color=white@1.0:radius=330[mask_circle];\n"
-        "[mask_circle]boxblur=20:20[mask_feather];\n"
-
-        # Visualizer
-        "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=gold,format=rgba[vis_gold];\n"
-        "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=red,format=rgba[vis_red];\n"
+        # Simple rectangular waveform
+        "[1:a]showwavespic=s=720x120:mode=line:rate=12:colors=gold,format=rgba[vis_gold];\n"
+        "[1:a]showwavespic=s=720x120:mode=line:rate=12:colors=red,format=rgba[vis_red];\n"
         "[vis_gold][vis_red]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
 
-        # Apply mask to visualizer
-        "[mask_feather][vis]alphamerge[vis_masked];\n"
+        # Overlay waveform at bottom
+        "[art][vis]overlay=x=0:y=600[with_vis];\n"
 
-        # Composite with artwork
-        "[vis_masked][art]overlay=x=(W-w)/2:y=(H-h)/2[pre_fisheye];\n"
-        "[pre_fisheye]v360=input=rectilinear:output=fisheye[fisheye];\n"
-
-        # Title text
-        f"[fisheye]drawtext=fontfile=assets/IMFellEnglishSC.ttf:"
-        f"text='{title_text}':x=(w-text_w)/2:y=60:fontsize=32:"
-        f"line_spacing=10:fontcolor=white[final];\n"
+        # Add text
+        f"[with_vis]drawtext=fontfile=assets/IMFellEnglishSC.ttf:"
+        f"text='{title_text}':x=(w-text_w)/2:y=40:fontsize=32:"
+        f"line_spacing=10:fontcolor=white[with_text];\n"
 
         # Fade-in
-        "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
+        "[with_text]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
 
 # ------------------------------------------------------------
@@ -121,17 +112,6 @@ def debug_filtergraph(path: str, content: str):
         f.write(content)
 
     log("WROTE FILTERGRAPH TO:", os.path.abspath(path))
-
-    log("---- FILTERGRAPH.TXT CONTENTS ----")
-    with open(path, "r", encoding="utf-8") as f:
-        for idx, line in enumerate(f, start=1):
-            log(f"{idx:03d}:", repr(line))
-    log("---- END FILTERGRAPH.TXT ----")
-
-    log("---- FILTERGRAPH.TXT RAW BYTES ----")
-    with open(path, "rb") as f:
-        log(f.read())
-    log("---- END RAW BYTES ----")
 
 # ------------------------------------------------------------
 # RUN FFMPEG
@@ -158,13 +138,6 @@ def run_ffmpeg():
         "final.mp4",
     ]
 
-    log("USING FILTERGRAPH SCRIPT:", os.path.abspath("filtergraph.txt"))
-    log("FILTERGRAPH EXISTS:", os.path.exists("filtergraph.txt"))
-    if os.path.exists("filtergraph.txt"):
-        log("FILTERGRAPH SIZE:", os.path.getsize("filtergraph.txt"))
-    log("CURRENT WORKING DIRECTORY:", os.getcwd())
-    log("CMD LIST:", cmd)
-
     proc = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
@@ -172,7 +145,6 @@ def run_ffmpeg():
         text=True,
     )
 
-    log("CMD STDOUT:", proc.stdout)
     log("CMD STDERR:", proc.stderr)
 
     if proc.returncode != 0:
@@ -194,7 +166,13 @@ def main():
     enclosure_url = get_latest_enclosure_url(rss_url)
     download_audio(enclosure_url, "part1.mp3")
 
-    for path in ("assets/1200x1200bf.png", "part1.mp3", "assets/IMFellEnglishSC.ttf"):
+    required = [
+        "assets/1200x1200bf.png",
+        "part1.mp3",
+        "assets/IMFellEnglishSC.ttf",
+    ]
+
+    for path in required:
         if not os.path.exists(path):
             log("ERROR: Missing required file:", path)
             sys.exit(1)
