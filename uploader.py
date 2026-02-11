@@ -70,7 +70,7 @@ def download_audio(url: str, output_path: str):
         sys.exit(1)
 
 # ------------------------------------------------------------
-# FILTERGRAPH (NO MASK, NO CIRCLE, NO FISHEYE)
+# FILTERGRAPH (NO MASKS, NO FISHEYE, NO MODES)
 # ------------------------------------------------------------
 def build_filtergraph(podcast_title, season_label, episode_title):
     title_text = (
@@ -82,13 +82,20 @@ def build_filtergraph(podcast_title, season_label, episode_title):
     )
 
     return (
-        # Scale and crop artwork to 720x720
+        # Scale/crop artwork
         "[0:v]scale=720:-1, crop=720:720, format=rgba[art];\n"
 
-        # Simple rectangular waveform
-        "[1:a]showwavespic=s=720x120:mode=line:rate=12:colors=gold,format=rgba[vis_gold];\n"
-        "[1:a]showwavespic=s=720x120:mode=line:rate=12:colors=red,format=rgba[vis_red];\n"
-        "[vis_gold][vis_red]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
+        # Basic waveform (no mode=, no colors=)
+        "[1:a]showwavespic=s=720x120,format=rgba[vis_raw];\n"
+
+        # Tint red
+        "[vis_raw]colorchannelmixer=rr=1:gg=0:bb=0[vis_red];\n"
+
+        # Tint gold
+        "[vis_raw]colorchannelmixer=rr=1:gg=0.84:bb=0[vis_gold];\n"
+
+        # Combine
+        "[vis_red][vis_gold]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
 
         # Overlay waveform at bottom
         "[art][vis]overlay=x=0:y=600[with_vis];\n"
