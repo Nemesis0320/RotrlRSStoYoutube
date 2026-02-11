@@ -206,12 +206,15 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
     ticker_text = f"Now Playing: {episode_title}"
 
-    # Escape for FFmpeg filtergraph script: backslashes first, then apostrophes
+    # ---------------------------------------------------------
+    # TEXT ESCAPING FOR FILTERGRAPH SCRIPT
+    # ---------------------------------------------------------
     def _ff_escape_text(s: str) -> str:
-        # Remove apostrophes entirely
+        # 1) Remove apostrophes entirely (Clinton's -> Clintons)
         s = s.replace("'", "")
-        # Escape colons for FFmpeg
-        return s.replace(":", r"\:")
+        # 2) Escape colons for FFmpeg
+        s = s.replace(":", r"\:")
+        return s
 
     safe_podcast_title_esc = _ff_escape_text(PODCAST_TITLE)
     safe_season_label_esc = _ff_escape_text(season_label)
@@ -241,15 +244,17 @@ def render_video(audio, output, episode_title=None, season_label=None):
         "[combined][mask]alphamerge[circ_wave];\n"
         "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];\n"
 
-        # --- FIXED DRAW TEXT BLOCK ---
+        # Title block — double quotes, no apostrophes
         f"[bg_wave]drawtext=fontfile={FONT_FILE}:"
-        f"text='{safe_podcast_title_esc.replace(\"'\", \"\\\\'\")}\\n{safe_season_label_esc}\\n{safe_episode_title_esc}':"
+        f"text=\"{safe_podcast_title_esc}\\n{safe_season_label_esc}\\n{safe_episode_title_esc}\":"
         "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white[bg_text];\n"
 
+        # Ticker block — double quotes, no apostrophes
         f"[bg_text]drawtext=fontfile={FONT_FILE}:"
-        f"text='{safe_ticker_text_esc}':"
+        f"text=\"{safe_ticker_text_esc}\":"
         "x=w-mod(t*120,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];\n"
 
+        # Fade in
         "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
 
@@ -296,7 +301,7 @@ def render_video(audio, output, episode_title=None, season_label=None):
     log("CURRENT WORKING DIRECTORY:", os.getcwd())
 
     output = str(output).strip()
-    
+
     cmd = [
         "ffmpeg",
         "-loglevel", "debug",
