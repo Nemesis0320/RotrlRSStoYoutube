@@ -2,8 +2,8 @@ name: Upload Podcast Episodes
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 */2 * * *"   # Run every 2 hours
+  #schedule:
+  # - cron: "0 */2 * * *"   # Run every 2 hours
 
 jobs:
   upload:
