@@ -2,8 +2,8 @@
 import os
 import sys
 import subprocess
+import feedparser
 import urllib.request
-import xml.etree.ElementTree as ET
 
 # ----------------------------------------------------------------------
 # Configuration
@@ -21,50 +21,32 @@ def log(*args):
     print(LOG_PREFIX, *args, flush=True)
 
 # ----------------------------------------------------------------------
-# RSS handling: fetch feed, extract latest enclosure URL
+# RSS handling via feedparser (bypasses 403 issues)
 # ----------------------------------------------------------------------
-def fetch_rss(url: str) -> str:
-    log("FETCHING RSS FEED FROM:", url)
-    try:
-        with urllib.request.urlopen(url) as resp:
-            charset = resp.headers.get_content_charset() or "utf-8"
-            data = resp.read().decode(charset, errors="replace")
-        log("RSS FEED FETCHED, LENGTH:", len(data))
-        return data
-    except Exception as e:
-        log("ERROR FETCHING RSS FEED:", str(e))
+def get_latest_enclosure_url(rss_url: str) -> str:
+    log("FETCHING RSS FEED VIA FEEDPARSER:", rss_url)
+    feed = feedparser.parse(rss_url)
+
+    if feed.bozo:
+        log("ERROR PARSING RSS FEED:", feed.bozo_exception)
         sys.exit(1)
 
-def extract_latest_enclosure_url(rss_xml: str) -> str:
-    log("PARSING RSS FEED FOR LATEST ENCLOSURE")
-    try:
-        root = ET.fromstring(rss_xml)
-    except Exception as e:
-        log("ERROR PARSING RSS XML:", str(e))
+    if not feed.entries:
+        log("ERROR: RSS FEED HAS NO ENTRIES")
         sys.exit(1)
 
-    channel = root.find("channel")
-    if channel is None:
-        # Some feeds use namespaces; try a generic search
-        channel = root.find("./*[@*]")
-    if channel is None:
-        log("ERROR: No <channel> element found in RSS")
+    entry = feed.entries[0]
+
+    if not entry.enclosures:
+        log("ERROR: LATEST ENTRY HAS NO ENCLOSURES")
         sys.exit(1)
 
-    # Find first <item> with an <enclosure url="...">
-    for item in channel.findall("item"):
-        enclosure = item.find("enclosure")
-        if enclosure is not None:
-            url = enclosure.get("url")
-            if url:
-                log("FOUND ENCLOSURE URL:", url)
-                return url
-
-    log("ERROR: No <enclosure> with url attribute found in RSS")
-    sys.exit(1)
+    url = entry.enclosures[0].href
+    log("FOUND ENCLOSURE URL:", url)
+    return url
 
 # ----------------------------------------------------------------------
-# Audio download: ensures part1.mp3 always exists
+# Audio download
 # ----------------------------------------------------------------------
 def download_audio(url: str, output_path: str):
     log("DOWNLOADING AUDIO FROM:", url)
@@ -81,9 +63,9 @@ def download_audio(url: str, output_path: str):
 def _ff_escape_text(s: str) -> str:
     if not s:
         return ""
-    s = s.replace("\\", "\\\\")   # literal backslash
-    s = s.replace(":", r"\:")     # drawtext option separator
-    s = s.replace("\n", r"\n")    # newlines inside text
+    s = s.replace("\\", "\\\\")
+    s = s.replace(":", r"\:")
+    s = s.replace("\n", r"\n")
     return s
 
 # ----------------------------------------------------------------------
@@ -117,7 +99,7 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
     )
     ticker_text = _ff_escape_text(ticker_text)
 
-    filter_complex = (
+    return (
         f"[0:v]scale={VIDEO_SIZE}[bg];\n"
         "color=black@0:s=720x720[mask_base];\n"
         "[mask_base]format=rgba[mask_rgba];\n"
@@ -140,8 +122,6 @@ def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
         "x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white[final];\n"
         "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
     )
-
-    return filter_complex
 
 # ----------------------------------------------------------------------
 # Run ffmpeg with the generated filtergraph script
@@ -202,8 +182,7 @@ def main():
         log("ERROR: RSS_URL environment variable not set")
         sys.exit(1)
 
-    rss_xml = fetch_rss(rss_url)
-    enclosure_url = extract_latest_enclosure_url(rss_xml)
+    enclosure_url = get_latest_enclosure_url(rss_url)
     download_audio(enclosure_url, AUDIO_FILE)
 
     for path in (BG_IMAGE, AUDIO_FILE, FONT_FILE):
