@@ -20,10 +20,20 @@ jobs:
           echo "After cleanup:"
           df -h
 
-      - name: Checkout repository
+      # ---------------------------------------------------------
+      # Git LFS support (THIS FIXES YOUR PNG ISSUE)
+      # ---------------------------------------------------------
+      - name: Install Git LFS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-lfs
+          git lfs install
+
+      - name: Checkout repository (with LFS)
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
