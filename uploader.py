@@ -187,7 +187,7 @@ FONT_FILE = "assets/IMFellEnglishSC.ttf"
 
 PODCAST_TITLE = "Clinton's Core Classics"
 
-def render_video(audio, output, episode_title=None, season_label=None):
+def render_video(audio, output, episode_title=None, season_label=None, episode_number=None):
     if episode_title is None:
         episode_title = "Untitled Episode"
     if season_label is None:
@@ -200,6 +200,8 @@ def render_video(audio, output, episode_title=None, season_label=None):
     safe_season_label = season_label.replace("'", r"\'")
     safe_episode_title = episode_title.replace("'", r"\'")
     safe_ticker_text = ticker_text.replace("'", r"\'")
+    season_ep_label = f"{season_label} EP {episode_number}"
+    safe_season_ep_label = season_ep_label.replace("'", "\\'")
     
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
@@ -220,16 +222,15 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_podcast_title}":x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
 
-        [bg_title]drawtext=fontfile={FONT_FILE}:text="{safe_season_label}":x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
+        [bg_titleline]drawtext=fontfile={FONT_FILE}:text="{safe_season_ep_label}":x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_season]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
-
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
+
 
     # TEMP: print full v360 help (no truncation)
     v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
@@ -279,31 +280,58 @@ def stitch_videos(v1, v2, out_path):
     run_cmd(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", out_path])
     return os.path.exists(out_path)
     
-def full_render_pipeline(title, season_label):
+def full_render_pipeline(title, season_label, episode_number):
     log("RENDER PIPELINE: start")
     dur, split = split_audio(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO)
     log("SPLIT RESULT:", "duration", dur, "split", split)
+
     if not split:
         log("SINGLE PART RENDER:", PART1_AUDIO, "->", FINAL_VIDEO)
-        if not render_video(PART1_AUDIO, FINAL_VIDEO, episode_title=title, season_label=season_label):
+        if not render_video(
+            PART1_AUDIO,
+            FINAL_VIDEO,
+            episode_title=title,
+            season_label=season_label,
+            episode_number=episode_number
+        ):
             log("RENDER FAILED: single part")
             return None, dur
+
         exists = os.path.exists(FINAL_VIDEO)
         size = os.path.getsize(FINAL_VIDEO) if exists else 0
         log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
         return FINAL_VIDEO, dur
+
     log("TWO PART RENDER:", PART1_AUDIO, "->", PART1_VIDEO, "|", PART2_AUDIO, "->", PART2_VIDEO)
-    ok1 = render_video(PART1_AUDIO, PART1_VIDEO, episode_title=title, season_label=season_label)
-    ok2 = render_video(PART2_AUDIO, PART2_VIDEO, episode_title=title, season_label=season_label)
+
+    ok1 = render_video(
+        PART1_AUDIO,
+        PART1_VIDEO,
+        episode_title=title,
+        season_label=season_label,
+        episode_number=episode_number
+    )
+
+    ok2 = render_video(
+        PART2_AUDIO,
+        PART2_VIDEO,
+        episode_title=title,
+        season_label=season_label,
+        episode_number=episode_number
+    )
+
     log("RENDER PART1 OK:", ok1, "EXISTS:", os.path.exists(PART1_VIDEO))
     log("RENDER PART2 OK:", ok2, "EXISTS:", os.path.exists(PART2_VIDEO))
+
     if not (ok1 and ok2):
         log("RENDER FAILED: one or both parts")
         return None, dur
+
     log("STITCH:", PART1_VIDEO, "+", PART2_VIDEO, "->", FINAL_VIDEO)
     if not stitch_videos(PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO):
         log("STITCH FAILED")
         return None, dur
+
     exists = os.path.exists(FINAL_VIDEO)
     size = os.path.getsize(FINAL_VIDEO) if exists else 0
     log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
@@ -369,18 +397,23 @@ def upload_with_retry(path, title, description, playlist_id):
     log("SECOND VIDEO NOT LIVE, GIVING UP")
     return None
 
-def render_and_upload(title, description, season_label):
+def render_and_upload(title, description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", title)
-    video_path, dur = full_render_pipeline(title, season_label)
+
+    video_path, dur = full_render_pipeline(title, season_label, episode_number)
     log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
+
     if not video_path:
         send_discord_embed("Render failed", "Re-rendering...", 0xE74C3C)
         log("RETRY RENDER")
-        video_path, dur = full_render_pipeline(title, season_label)
+
+        video_path, dur = full_render_pipeline(title, season_label, episode_number)
         log("SECOND RENDER RESULT:", video_path, "DUR:", dur)
+
         if not video_path:
             log("RENDER FAILED TWICE")
             return None, dur
+
     vid = upload_with_retry(video_path, title, description, YOUTUBE_PLAYLIST_ID)
     log("UPLOAD RESULT VIDEO_ID:", vid)
     return vid, dur
@@ -461,7 +494,7 @@ def process_episode(eid, title, url, season, ep, uploaded, stats):
         log("DOWNLOAD FAILED:", url)
         return False
 
-    vid, dur = render_and_upload(title, title, season_label=season_label)
+    vid, dur = render_and_upload(title, title, season_label=season_label, episode_number=ep)
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
     if not vid:
         stats["failures_today"] += 1
