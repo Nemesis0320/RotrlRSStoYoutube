@@ -2,10 +2,17 @@
 import os
 import sys
 import re
+import json
+import base64
 import subprocess
+from typing import List, Optional, Tuple
+
 import feedparser
 import requests
-from typing import List, Optional, Tuple, Dict, Any
+
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 LOG_PREFIX = "[uploader]"
 
@@ -33,7 +40,6 @@ class Episode:
         self.episode = episode
 
     def sort_key(self):
-        # Season/Episode first, then pubdate, then title
         s = self.season if self.season is not None else 9999
         e = self.episode if self.episode is not None else 9999
         return (s, e, self.pubdate or "", self.title)
@@ -237,15 +243,66 @@ def run_ffmpeg(output_path: str):
         raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
 
 # ------------------------------------------------------------
-# YOUTUBE UPLOAD STUB
+# YOUTUBE AUTH / UPLOAD
 # ------------------------------------------------------------
+def load_youtube_credentials() -> Credentials:
+    token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
+    token_b64 = os.environ.get("YOUTUBE_TOKEN_JSON_B64")
+
+    if token_b64 and not token_json:
+        token_json = base64.b64decode(token_b64).decode("utf-8")
+
+    if not token_json:
+        log("ERROR: YOUTUBE_TOKEN_JSON or YOUTUBE_TOKEN_JSON_B64 not set")
+        sys.exit(1)
+
+    info = json.loads(token_json)
+    creds = Credentials.from_authorized_user_info(info, scopes=["https://www.googleapis.com/auth/youtube.upload"])
+    return creds
+
 def upload_to_youtube(video_path: str, title: str, description: str):
-    """
-    Plug your existing YouTube upload logic here.
-    This stub is intentionally minimal so we don't guess your auth/flow.
-    """
-    log("UPLOAD STUB:", "Would upload", video_path, "with title:", title)
-    # TODO: integrate your real YouTube uploader here.
+    creds = load_youtube_credentials()
+    youtube = build("youtube", "v3", credentials=creds)
+
+    body = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "categoryId": "22",  # People & Blogs (adjust if you like)
+        },
+        "status": {
+            "privacyStatus": "public",
+        },
+    }
+
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
+
+    log("STARTING YOUTUBE UPLOAD:", video_path)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media,
+    )
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            log(f"UPLOAD PROGRESS: {int(status.progress() * 100)}%")
+
+    log("YOUTUBE UPLOAD COMPLETE:", response.get("id"))
+
+# ------------------------------------------------------------
+# DISCORD NOTIFY (OPTIONAL)
+# ------------------------------------------------------------
+def notify_discord(message: str):
+    webhook = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook:
+        return
+    try:
+        requests.post(webhook, json={"content": message}, timeout=10)
+    except Exception as e:
+        log("DISCORD NOTIFY FAILED:", str(e))
 
 # ------------------------------------------------------------
 # MAIN
@@ -261,21 +318,18 @@ def main():
     episodes = get_episodes_from_rss(rss_url)
     next_ep = pick_next_episode(episodes)
     if not next_ep:
+        notify_discord("No unprocessed episodes left.")
         sys.exit(0)
 
-    # Build labels
     if next_ep.season is not None:
         season_label = f"Season {next_ep.season}"
     else:
         season_label = "Season ?"
 
-    # Episode title for on-screen text: strip leading season/episode noise if desired
     episode_title = next_ep.title
 
-    # Download audio
     download_audio(next_ep.enclosure_url, "part1.mp3")
 
-    # Check required assets
     required = [
         "assets/1200x1200bf.png",
         "part1.mp3",
@@ -286,7 +340,6 @@ def main():
             log("ERROR: Missing required file:", path)
             sys.exit(1)
 
-    # Build filtergraph
     filtergraph = build_filtergraph(
         podcast_title=podcast_title,
         season_label=season_label,
@@ -294,22 +347,19 @@ def main():
     )
     debug_filtergraph("filtergraph.txt", filtergraph)
 
-    # Output filename
     safe_title = re.sub(r"[^\w\-]+", "_", next_ep.title).strip("_")
     output_video = f"{safe_title or 'episode'}.mp4"
 
-    # Render
     run_ffmpeg(output_video)
 
-    # Mark processed
-    save_processed_guid(next_ep.guid)
-
-    # Upload stub
     upload_to_youtube(
         video_path=output_video,
         title=next_ep.title,
         description=next_ep.title,
     )
+
+    save_processed_guid(next_ep.guid)
+    notify_discord(f"Uploaded episode: {next_ep.title}")
 
     log("DONE WITH EPISODE:", next_ep.title)
 
