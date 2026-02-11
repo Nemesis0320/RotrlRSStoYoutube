@@ -392,6 +392,17 @@ def fetch_rss():
     log("RSS ENTRIES:", len(feed.entries))
     return feed
 
+import re
+def parse_season_episode(title):
+    """
+    Parse titles of the form:
+    'Season 1 EP. 4: Title'
+    Returns (season, episode) or (None, None) if not matched.
+    """
+    m = re.search(r"[Ss]eason\s+(\d+)\s+EP\.\s*(\d+)", title)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None, None
 
 def get_episodes(feed):
     eps = []
@@ -399,36 +410,49 @@ def get_episodes(feed):
         eid = getattr(e, "id", None)
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
+
         log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
-        if eid and url:
-            eps.append((eid, title, url))
+
+        if not (eid and url):
+            continue
+
+        # Parse season/episode using naming convention
+        season, ep = parse_season_episode(title)
+
+        # Ignore anything that isn't a real episode
+        if season is None or ep is None:
+            log("IGNORING EPISODE WITH NO SEASON/EP:", title)
+            continue
+
+        # Store full tuple for sorting
+        eps.append((eid, title, url, season, ep))
+
+    # Sort by season then episode
+    eps.sort(key=lambda x: (x[3], x[4]))
+
+    # Debug print sorted order
+    for eid, title, url, season, ep in eps:
+        log("SORTED:", season, ep, title)
+
     log("EPISODE LIST BUILT:", len(eps))
     return eps
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url in episodes:
+    for eid, title, url, season, ep in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
-            log("NEXT EP FOUND:", eid, title)
-            return eid, title, url
+            log("NEXT EP FOUND:", eid, f"S{season}E{ep}", title)
+            return eid, title, url, season, ep
     log("NO NEW EPISODES")
-    return None, None, None
+    return None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, uploaded, stats):
-    log("PROCESS EP:", eid, title, url)
-    # Extract season number from title
-    # Expected formats:
-    #   "Season 6 - Episode 12: Title"
-    #   "S6E12: Title"
-    #   "Season 6 Episode 12: Title"
-    import re
-    m = re.search(r"[Ss]eason\s+(\d+)", title)
-    if not m:
-        m = re.search(r"[Ss](\d+)[Ee]\d+", title)
-    season_num = int(m.group(1)) if m else 0
-    season_label = f"Season {season_num}"
+def process_episode(eid, title, url, season, ep, uploaded, stats):
+    log("PROCESS EP:", eid, f"S{season}E{ep}", title)
+
+    season_label = f"Season {season}"
+
     cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
     if not download_audio(url, AUDIO_FILE):
         stats["failures_today"] += 1
@@ -436,6 +460,7 @@ def process_episode(eid, title, url, uploaded, stats):
         send_discord_embed("Download failed", title, 0xE74C3C)
         log("DOWNLOAD FAILED:", url)
         return False
+
     vid, dur = render_and_upload(title, title, season_label=season_label)
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
     if not vid:
@@ -444,6 +469,7 @@ def process_episode(eid, title, url, uploaded, stats):
         send_discord_embed("Upload failed", title, 0xE74C3C)
         log("UPLOAD FAILED FOR EP:", eid)
         return False
+
     uploaded.add(eid)
     save_uploaded(uploaded)
     stats["episodes_uploaded_today"] += 1
@@ -475,13 +501,14 @@ def main():
     stats = load_daily_stats()
     stats = reset_daily_stats_if_needed(stats)
     log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url = next_episode(uploaded, episodes)
+    eid, title, url, season, ep = next_episode(uploaded, episodes)
     if not eid:
         write_summary("No new episodes.")
         send_discord_embed("Idle", "No new episodes.")
         log("NO NEW EPISODES, EXIT")
         return
-    ok = process_episode(eid, title, url, uploaded, stats)
+
+    ok = process_episode(eid, title, url, season, ep, uploaded, stats)
     remaining = len([e for e in episodes if e[0] not in uploaded])
     write_daily_summary(stats, remaining)
     if ok:
