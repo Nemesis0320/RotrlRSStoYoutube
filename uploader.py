@@ -3,7 +3,7 @@ import os
 import sys
 import subprocess
 import feedparser
-import urllib.request
+import requests
 
 # ----------------------------------------------------------------------
 # Configuration
@@ -21,7 +21,7 @@ def log(*args):
     print(LOG_PREFIX, *args, flush=True)
 
 # ----------------------------------------------------------------------
-# RSS handling via feedparser (bypasses 403 issues)
+# RSS handling via feedparser (bypasses 403 on XML)
 # ----------------------------------------------------------------------
 def get_latest_enclosure_url(rss_url: str) -> str:
     log("FETCHING RSS FEED VIA FEEDPARSER:", rss_url)
@@ -46,13 +46,35 @@ def get_latest_enclosure_url(rss_url: str) -> str:
     return url
 
 # ----------------------------------------------------------------------
-# Audio download
+# Audio download using requests with browser headers (bypasses 403)
 # ----------------------------------------------------------------------
 def download_audio(url: str, output_path: str):
     log("DOWNLOADING AUDIO FROM:", url)
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": url.rsplit("/", 1)[0] + "/",
+    }
+
     try:
-        urllib.request.urlretrieve(url, output_path)
+        with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+            if r.status_code != 200:
+                log("ERROR DOWNLOADING AUDIO: HTTP", r.status_code)
+                sys.exit(1)
+
+            with open(output_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
         log("AUDIO DOWNLOADED TO:", output_path)
+
     except Exception as e:
         log("ERROR DOWNLOADING AUDIO:", str(e))
         sys.exit(1)
