@@ -5,24 +5,14 @@ import subprocess
 import feedparser
 import requests
 
-# ----------------------------------------------------------------------
-# Configuration
-# ----------------------------------------------------------------------
-VIDEO_SIZE = "720x720"
-VIDEO_FPS = 12
-FONT_FILE = "assets/IMFellEnglishSC.ttf"
-BG_IMAGE = "assets/1200x1200bf.png"
-AUDIO_FILE = "part1.mp3"
-FILTERGRAPH_PATH = "filtergraph.txt"
-
 LOG_PREFIX = "[uploader]"
 
 def log(*args):
     print(LOG_PREFIX, *args, flush=True)
 
-# ----------------------------------------------------------------------
-# RSS handling via feedparser
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------
+# RSS FETCH
+# ------------------------------------------------------------
 def get_latest_enclosure_url(rss_url: str) -> str:
     log("FETCHING RSS FEED VIA FEEDPARSER:", rss_url)
     feed = feedparser.parse(rss_url)
@@ -45,9 +35,9 @@ def get_latest_enclosure_url(rss_url: str) -> str:
     log("FOUND ENCLOSURE URL:", url)
     return url
 
-# ----------------------------------------------------------------------
-# Audio download using requests with browser headers
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------
+# AUDIO DOWNLOAD
+# ------------------------------------------------------------
 def download_audio(url: str, output_path: str):
     log("DOWNLOADING AUDIO FROM:", url)
 
@@ -79,17 +69,45 @@ def download_audio(url: str, output_path: str):
         log("ERROR DOWNLOADING AUDIO:", str(e))
         sys.exit(1)
 
-# ----------------------------------------------------------------------
-# Text escaping for script file (only escape double quotes)
-# ----------------------------------------------------------------------
-def _ff_escape_text(s: str) -> str:
-    if not s:
-        return ""
-    return s.replace('"', r'\"')
+# ------------------------------------------------------------
+# FILTERGRAPH GENERATOR (FEATHERED MASK)
+# ------------------------------------------------------------
+def build_filtergraph(podcast_title, season_label, episode_title):
+    title_text = (
+        podcast_title.replace("'", r"\'") +
+        r"\n" +
+        season_label.replace("'", r"\'") +
+        r"\n" +
+        episode_title.replace("'", r"\'")
+    )
 
-# ----------------------------------------------------------------------
-# Unified debug exporter for filtergraph
-# ----------------------------------------------------------------------
+    return (
+        "[0:v]scale=720:720:force_original_aspect_ratio=cover,"
+        "crop=720:720,format=rgba[art];\n"
+
+        "color=size=720x720:color=black@0:rate=12:format=rgba[mask_base];\n"
+        "[mask_base]geometric=type=circle:x=360:y=360:r=330:color=white@1.0[mask_solid];\n"
+        "[mask_solid]boxblur=20:20[mask_feather];\n"
+
+        "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=gold,format=rgba[vis_gold];\n"
+        "[1:a]showwavespic=s=720x40:mode=line:rate=12:colors=red,format=rgba[vis_red];\n"
+        "[vis_gold][vis_red]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
+
+        "[mask_feather][vis]alphamerge[vis_masked];\n"
+
+        "[vis_masked][art]overlay=x=(W-w)/2:y=(H-h)/2[pre_fisheye];\n"
+        "[pre_fisheye]v360=input=rectilinear:output=fisheye[fisheye];\n"
+
+        f"[fisheye]drawtext=fontfile=assets/IMFellEnglishSC.ttf:"
+        f"text='{title_text}':x=(w-text_w)/2:y=60:fontsize=32:"
+        f"line_spacing=10:fontcolor=white[final];\n"
+
+        "[final]fade=t=in:st=0:d=0.8[final_faded]\n"
+    )
+
+# ------------------------------------------------------------
+# DEBUG DUMP
+# ------------------------------------------------------------
 def debug_filtergraph(path: str, content: str):
     log("FINAL FILTERGRAPH:", repr(content))
 
@@ -109,54 +127,21 @@ def debug_filtergraph(path: str, content: str):
         log(f.read())
     log("---- END RAW BYTES ----")
 
-# ----------------------------------------------------------------------
-# Build filtergraph script content (NO TICKER)
-# ----------------------------------------------------------------------
-def build_filtergraph(podcast_title, season_label, episode_title):
-    title_text = _ff_escape_text(
-        f"{podcast_title}\n{season_label}\n{episode_title}"
-    )
-
-    geq_expr = (
-        "if(((X-360)*(X-360)+(Y-360)*(Y-360)) < (330*330),255,0)"
-    )
-
-    return (
-        f"[0:v]scale={VIDEO_SIZE}[bg];\n"
-        "color=black@0:s=720x720[mask_base];\n"
-        "[mask_base]format=rgba[mask_rgba];\n"
-        f"[mask_rgba]geq={geq_expr}:128:128:{geq_expr} [mask];\n"
-        "[1:a]asplit=2[a_main][a_clip];\n"
-        f"[a_main]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin [wave_inner_raw];\n"
-        "[wave_inner_raw]pad=720:720:0:720-40:black@0 [wave_inner];\n"
-        f"[a_clip]showwaves=s=720x40:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin [wave_clip_raw_raw];\n"
-        "[wave_clip_raw_raw]pad=720:720:0:720-40:black@0 [wave_clip_raw];\n"
-        "[wave_clip_raw][mask]alphamerge [wave_clip_masked];\n"
-        "[wave_inner]v360=input=rectilinear:output=fisheye [polar_inner];\n"
-        "[wave_clip_masked]v360=input=rectilinear:output=fisheye [polar_clip];\n"
-        "[polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0 [combined];\n"
-        "[combined][mask]alphamerge [circ_wave];\n"
-        "[bg][circ_wave]overlay=(W-w)/2:(H-h)/2 [bg_wave];\n"
-        f"[bg_wave]drawtext=fontfile={FONT_FILE}:text=\"{title_text}\":"
-        "x=(w-text_w)/2:y=60:fontsize=32:line_spacing=10:fontcolor=white [final];\n"
-        "[final]fade=t=in:st=0:d=0.8 [final_faded]\n"
-    )
-
-# ----------------------------------------------------------------------
-# Run ffmpeg with the generated filtergraph script
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------
+# RUN FFMPEG
+# ------------------------------------------------------------
 def run_ffmpeg():
     cmd = [
         "ffmpeg",
         "-loglevel", "debug",
         "-y",
         "-loop", "1",
-        "-i", BG_IMAGE,
-        "-i", AUDIO_FILE,
-        "-filter_complex_script", os.path.abspath(FILTERGRAPH_PATH),
+        "-i", "assets/1200x1200bf.png",
+        "-i", "part1.mp3",
+        "-filter_complex_script", os.path.abspath("filtergraph.txt"),
         "-map", "[final_faded]",
         "-map", "1:a",
-        "-r", str(VIDEO_FPS),
+        "-r", "12",
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-tune", "stillimage",
@@ -167,10 +152,10 @@ def run_ffmpeg():
         "final.mp4",
     ]
 
-    log("USING FILTERGRAPH SCRIPT:", os.path.abspath(FILTERGRAPH_PATH))
-    log("FILTERGRAPH EXISTS:", os.path.exists(FILTERGRAPH_PATH))
-    if os.path.exists(FILTERGRAPH_PATH):
-        log("FILTERGRAPH SIZE:", os.path.getsize(FILTERGRAPH_PATH))
+    log("USING FILTERGRAPH SCRIPT:", os.path.abspath("filtergraph.txt"))
+    log("FILTERGRAPH EXISTS:", os.path.exists("filtergraph.txt"))
+    if os.path.exists("filtergraph.txt"):
+        log("FILTERGRAPH SIZE:", os.path.getsize("filtergraph.txt"))
     log("CURRENT WORKING DIRECTORY:", os.getcwd())
     log("CMD LIST:", cmd)
 
@@ -187,9 +172,9 @@ def run_ffmpeg():
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed with code {proc.returncode}")
 
-# ----------------------------------------------------------------------
-# Main entry point
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------
 def main():
     podcast_title = "Clintons Core Classics"
     season_label = "Season 6"
@@ -201,9 +186,9 @@ def main():
         sys.exit(1)
 
     enclosure_url = get_latest_enclosure_url(rss_url)
-    download_audio(enclosure_url, AUDIO_FILE)
+    download_audio(enclosure_url, "part1.mp3")
 
-    for path in (BG_IMAGE, AUDIO_FILE, FONT_FILE):
+    for path in ("assets/1200x1200bf.png", "part1.mp3", "assets/IMFellEnglishSC.ttf"):
         if not os.path.exists(path):
             log("ERROR: Missing required file:", path)
             sys.exit(1)
@@ -214,7 +199,7 @@ def main():
         episode_title,
     )
 
-    debug_filtergraph(FILTERGRAPH_PATH, filtergraph)
+    debug_filtergraph("filtergraph.txt", filtergraph)
     run_ffmpeg()
 
     log("Rendering complete: final.mp4")
