@@ -113,11 +113,15 @@ def debug_filtergraph(path: str, content: str):
 # Build filtergraph script content
 # ----------------------------------------------------------------------
 def build_filtergraph(podcast_title, season_label, episode_title, ticker_text):
+    # Title block may contain newlines — allowed in drawtext
     title_text = _ff_escape_text(
         f"{podcast_title}\n{season_label}\n{episode_title}"
     )
-    ticker_text = _ff_escape_text(ticker_text)
 
+    # Ticker text MUST be single-line
+    ticker_text = _ff_escape_text(ticker_text.replace("\n", " "))
+
+    # GEQ expression must be fully parenthesized for FFmpeg 6.1.x
     geq_expr = (
         "if(((X-360)*(X-360)+(Y-360)*(Y-360)) < (330*330),255,0)"
     )
