@@ -122,6 +122,49 @@ def save_uploaded(uploaded):
         json.dump(list(uploaded), f)
 
 # Utilities
+def send_discord_summary(episode_title, season_label, episode_number, youtube_url, thumbnail_url):
+    import requests
+    import datetime
+
+    webhook_url = DISCORD_WEBHOOK_URL  # your webhook
+
+    season_ep = f"{season_label} EP {episode_number}"
+
+    embed = {
+        "title": f"{season_ep} Uploaded Successfully",
+        "description": f"**{episode_title}** is now live on YouTube.",
+        "url": youtube_url,
+        "color": 0xFFD700,  # gold
+        "thumbnail": {
+            "url": thumbnail_url
+        },
+        "fields": [
+            {
+                "name": "Episode",
+                "value": episode_title,
+                "inline": False
+            },
+            {
+                "name": "Season / EP",
+                "value": season_ep,
+                "inline": True
+            },
+            {
+                "name": "YouTube Link",
+                "value": youtube_url,
+                "inline": False
+            }
+        ],
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+
+    payload = {
+        "content": None,
+        "embeds": [embed]
+    }
+
+    requests.post(webhook_url, json=payload)
+
 def cleanup_files(*paths):
     for p in paths:
         if p and os.path.exists(p):
@@ -194,15 +237,15 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
         season_label = SEASON_LABEL  # fallback
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
-    ticker_text = f"Now Playing: {episode_title}"
-    
-    safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
-    safe_season_label = season_label.replace("'", r"\'")
-    safe_episode_title = episode_title.replace("'", r"\'")
-    safe_ticker_text = ticker_text.replace("'", r"\'")
+    # Canonical labels
     season_ep_label = f"{season_label} EP {episode_number}"
+    ticker_text = f"{season_ep_label}: {episode_title}"
+
+    # Escape single quotes for FFmpeg drawtext
+    safe_episode_title = episode_title.replace("'", "\\'")
     safe_season_ep_label = season_ep_label.replace("'", "\\'")
-    
+    safe_ticker_text = ticker_text.replace("'", "\\'")
+
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
@@ -222,19 +265,14 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
 
-        [bg_titleline]drawtext=fontfile={FONT_FILE}:text="{safe_season_ep_label}":x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
-
-
-    # TEMP: print full v360 help (no truncation)
-    v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
-    log("V360 HELP FULL:", v360_help)
 
     cmd = [
         "ffmpeg",
@@ -260,12 +298,10 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     out = run_cmd(cmd)
     log("RENDER L3-CIRC OUT:", out)
 
-    # Detect FFmpeg failure
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
         log("RENDER L3-CIRC ERROR DETECTED:", out[:2000])
         return False
 
-    # Detect missing or empty output file
     exists = os.path.exists(output)
     size = os.path.getsize(output) if exists else 0
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
@@ -481,7 +517,7 @@ def next_episode(uploaded, episodes):
     return None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, season, ep, uploaded, stats):
+def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbnail_url=None):
     log("PROCESS EP:", eid, f"S{season}E{ep}", title)
 
     season_label = f"Season {season}"
@@ -494,8 +530,16 @@ def process_episode(eid, title, url, season, ep, uploaded, stats):
         log("DOWNLOAD FAILED:", url)
         return False
 
-    vid, dur = render_and_upload(title, title, season_label=season_label, episode_number=ep)
-    log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
+    # render_and_upload now returns: video_id, render_time, upload_time
+    vid, render_time, upload_time = render_and_upload(
+        title,
+        title,
+        season_label=season_label,
+        episode_number=ep
+    )
+
+    log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "RENDER:", render_time, "UPLOAD:", upload_time)
+
     if not vid:
         stats["failures_today"] += 1
         save_daily_stats(stats)
@@ -503,15 +547,37 @@ def process_episode(eid, title, url, season, ep, uploaded, stats):
         log("UPLOAD FAILED FOR EP:", eid)
         return False
 
+    youtube_url = f"https://www.youtube.com/watch?v={vid}"
+
+    # Episode-specific thumbnail if available; fallback otherwise.
+    thumbnail_url = episode_thumbnail_url or \
+        "https://raw.githubusercontent.com/Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
+
+    send_discord_summary(
+        title,
+        season_label,
+        ep,
+        youtube_url,
+        thumbnail_url,
+        render_time,
+        upload_time
+    )
+
     uploaded.add(eid)
     save_uploaded(uploaded)
     stats["episodes_uploaded_today"] += 1
-    stats["total_runtime_today"] += dur
+    stats["total_runtime_today"] += render_time
     save_daily_stats(stats)
-    send_discord_embed("Upload complete", f"{title}\nDuration: {format_seconds(dur)}", 0x2ECC71)
+
+    send_discord_embed(
+        "Upload complete",
+        f"{title}\nDuration: {format_seconds(render_time)}",
+        0x2ECC71
+    )
+
     log("EP SUCCESS:", eid, "VIDEO_ID:", vid)
     return True
-
+    
 def write_daily_summary(stats, uploaded_count):
     text = (
         f"Date: {stats['date']}\n"
