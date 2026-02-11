@@ -210,10 +210,11 @@ def render_video(audio, output, episode_title=None, season_label=None):
     # TEXT ESCAPING FOR FILTERGRAPH SCRIPT
     # ---------------------------------------------------------
     def _ff_escape_text(s: str) -> str:
-        # Remove apostrophes entirely (Clinton's -> Clintons)
         s = s.replace("'", "")
-        # Do NOT escape colons; they are safe inside double quotes
+        s = s.replace("\n", " ")
+        s = s.replace("\r", " ")
         return s
+
 
     safe_podcast_title_esc = _ff_escape_text(PODCAST_TITLE)
     safe_season_label_esc = _ff_escape_text(season_label)
