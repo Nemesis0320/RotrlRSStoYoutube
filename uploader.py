@@ -187,7 +187,7 @@ def build_filtergraph(podcast_title: str, season_label: str, episode_title: str)
 
     return (
         "[0:v]scale=720:-1, crop=720:720, format=rgba[art];\n"
-        "[1:a]showwavespic=s=720x120,format=rgba[vis_raw];\n"
+        "[1:a:0]showwavespic=s=720x120,format=rgba[vis_raw];\n"
         "[vis_raw]colorchannelmixer=rr=1:gg=0:bb=0[vis_red];\n"
         "[vis_raw]colorchannelmixer=rr=1:gg=0.84:bb=0[vis_gold];\n"
         "[vis_red][vis_gold]blend=all_mode=lighten:all_opacity=1.0[vis];\n"
