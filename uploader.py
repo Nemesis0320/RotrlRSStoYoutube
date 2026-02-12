@@ -150,11 +150,19 @@ def save_uploaded(uploaded):
         json.dump(list(uploaded), f)
 
 # Utilities
-def send_discord_summary(episode_title, season_label, episode_number, youtube_url, thumbnail_url):
+def send_discord_summary(
+    episode_title,
+    season_label,
+    episode_number,
+    youtube_url,
+    thumbnail_url,
+    render_time,
+    upload_time
+):
     import requests
     import datetime
 
-    webhook_url = DISCORD_WEBHOOK_URL  # your webhook
+    webhook_url = DISCORD_WEBHOOK_URL
 
     season_ep = f"{season_label} EP {episode_number}"
 
@@ -162,18 +170,18 @@ def send_discord_summary(episode_title, season_label, episode_number, youtube_ur
         "title": f"{season_ep} Uploaded Successfully",
         "description": f"**{episode_title}** is now live on YouTube.",
         "url": youtube_url,
-        "color": 0xFFD700,  # gold
+        "color": 0xFFD700,
         "thumbnail": {
             "url": thumbnail_url
         },
         "fields": [
             {
-                "name": "Episode",
+                "name": "Episode Title",
                 "value": episode_title,
                 "inline": False
             },
             {
-                "name": "Season / EP",
+                "name": "Season / Episode",
                 "value": season_ep,
                 "inline": True
             },
@@ -181,6 +189,16 @@ def send_discord_summary(episode_title, season_label, episode_number, youtube_ur
                 "name": "YouTube Link",
                 "value": youtube_url,
                 "inline": False
+            },
+            {
+                "name": "Render Time",
+                "value": f"{render_time:.2f} seconds",
+                "inline": True
+            },
+            {
+                "name": "Upload Time",
+                "value": f"{upload_time:.2f} seconds",
+                "inline": True
             }
         ],
         "timestamp": datetime.datetime.utcnow().isoformat()
@@ -191,7 +209,10 @@ def send_discord_summary(episode_title, season_label, episode_number, youtube_ur
         "embeds": [embed]
     }
 
-    requests.post(webhook_url, json=payload)
+    try:
+        requests.post(webhook_url, json=payload, timeout=10)
+    except:
+        pass
 
 def cleanup_files(*paths):
     for p in paths:
@@ -288,15 +309,6 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
             .replace(":", "\\:")
     )
 
-    # Escape single quotes for FFmpeg drawtext
-    safe_episode_title = episode_title.replace("'", "\\'")
-    safe_season_ep_label = season_ep_label.replace("'", "\\'")
-    safe_ticker_text = (
-        ticker_text
-            .replace("'", "\\'")
-            .replace(":", "\\:")
-    )
-
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
@@ -320,7 +332,7 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
 
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
@@ -358,7 +370,6 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
 
     return exists and size > 0
-
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
@@ -601,16 +612,18 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbn
         return False
 
     # render_and_upload now returns: video_id, render_time, upload_time
-    youtube_title = f"{season_label} EP {ep}: {title}"
-    youtube_description = f"{season_label} EP {ep}: {title}"
+    clean_title = title  # this is the clean title from get_episodes()
+
+    youtube_title = f"{season_label} EP {ep}: {clean_title}"
+    youtube_description = youtube_title
 
     vid, render_time, upload_time = render_and_upload(
-        youtube_title,
-        youtube_description,
+        clean_title,            # renderer gets CLEAN title
+        youtube_description,    # YouTube gets CANONICAL title
         season_label=season_label,
         episode_number=ep
     )
-
+    
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "RENDER:", render_time, "UPLOAD:", upload_time)
 
     if not vid:
@@ -627,7 +640,7 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbn
         "https://raw.githubusercontent.com/Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
 
     send_discord_summary(
-        title,
+        youtube_title,
         season_label,
         ep,
         youtube_url,
