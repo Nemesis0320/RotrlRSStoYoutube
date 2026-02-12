@@ -436,23 +436,36 @@ def upload_with_retry(path, title, description, playlist_id):
 def render_and_upload(title, description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", title)
 
+    # Measure render time
+    import time
+    t0 = time.time()
     video_path, dur = full_render_pipeline(title, season_label, episode_number)
-    log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
+    render_time = time.time() - t0
+
+    log("FIRST RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
 
     if not video_path:
         send_discord_embed("Render failed", "Re-rendering...", 0xE74C3C)
         log("RETRY RENDER")
 
+        t0 = time.time()
         video_path, dur = full_render_pipeline(title, season_label, episode_number)
-        log("SECOND RENDER RESULT:", video_path, "DUR:", dur)
+        render_time = time.time() - t0
+
+        log("SECOND RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
 
         if not video_path:
             log("RENDER FAILED TWICE")
-            return None, dur
+            return None, render_time, None
 
+    # Measure upload time
+    t1 = time.time()
     vid = upload_with_retry(video_path, title, description, YOUTUBE_PLAYLIST_ID)
-    log("UPLOAD RESULT VIDEO_ID:", vid)
-    return vid, dur
+    upload_time = time.time() - t1
+
+    log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
+
+    return vid, render_time, upload_time
 
 # RSS + queue
 def fetch_rss():
@@ -494,7 +507,13 @@ def get_episodes(feed):
             continue
 
         # Store full tuple for sorting
-        eps.append((eid, title, url, season, ep))
+        # Strip leading "Season X EP Y" from the title if the feed includes it
+        expected_prefix = f"Season {season} EP. {ep}"
+        clean_title = title
+        if clean_title.startswith(expected_prefix):
+            clean_title = clean_title[len(expected_prefix):].lstrip(" :-")
+
+        eps.append((eid, clean_title, url, season, ep))
 
     # Sort by season then episode
     eps.sort(key=lambda x: (x[3], x[4]))
