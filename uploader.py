@@ -51,6 +51,7 @@ def send_discord_summary(title, season_label, episode_number, youtube_url, thumb
     ]
 
     data = {
+        "content": "",  # REQUIRED so Discord doesn't drop the embed
         "embeds": [
             {
                 "title": f"Upload Complete: {title}",
@@ -551,14 +552,8 @@ def parse_season_episode(title):
 def get_episodes(feed):
     eps = []
     for e in feed.entries:
-        eid = getattr(e, "id", None)
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
-
-        log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
-
-        if not (eid and url):
-            continue
 
         # Parse season/episode using naming convention
         season, ep = parse_season_episode(title)
@@ -568,7 +563,14 @@ def get_episodes(feed):
             log("IGNORING EPISODE WITH NO SEASON/EP:", title)
             continue
 
-        # Store full tuple for sorting
+        # Use stable episode key instead of RSS feed ID
+        eid = f"S{season}E{ep}"
+
+        log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
+
+        if not url:
+            continue
+
         # Strip leading "Season X EP Y" from the title if the feed includes it
         expected_prefix = f"Season {season} EP. {ep}"
         clean_title = title
@@ -614,8 +616,8 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbn
     # render_and_upload now returns: video_id, render_time, upload_time
     clean_title = title  # this is the clean title from get_episodes()
 
-    youtube_title = f"{season_label} EP {ep}: {clean_title}"
-    youtube_description = youtube_title
+    youtube_title = f"Clinton's Core Classics: {season_label} EP {ep} – {clean_title}"
+    youtube_description = f"{season_label} EP {ep} – {clean_title}"
 
     vid, render_time, upload_time = render_and_upload(
         clean_title,            # renderer gets CLEAN title
