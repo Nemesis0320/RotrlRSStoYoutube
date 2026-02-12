@@ -292,23 +292,24 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     ticker_text = f"{season_ep_label}: {episode_title}"
 
     # Escape characters for FFmpeg drawtext
-    safe_episode_title = (
-        episode_title
+    def ffmpeg_escape(text):
+        return (
+            text
+            .replace("\\", "\\\\")
             .replace("'", "\\'")
             .replace(":", "\\:")
-    )
+            .replace(",", "\\,")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("%", "\\%")
+            .replace("(", "\\(")
+            .replace(")", "\\)")
+            .replace(";", "\\;")
+        )
 
-    safe_season_ep_label = (
-        season_ep_label
-            .replace("'", "\\'")
-            .replace(":", "\\:")
-    )
-
-    safe_ticker_text = (
-        ticker_text
-            .replace("'", "\\'")
-            .replace(":", "\\:")
-    )
+    safe_episode_title = ffmpeg_escape(episode_title)
+    safe_season_ep_label = ffmpeg_escape(season_ep_label)
+    safe_ticker_text = ffmpeg_escape(ticker_text)
 
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
