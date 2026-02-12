@@ -41,6 +41,34 @@ def send_discord_embed(title, description="", color=0x3498DB, fields=None, thumb
     except:
         pass
 
+def send_discord_summary(title, season_label, episode_number, youtube_url, thumbnail_url, render_time, upload_time):
+    fields = [
+        ("Season", season_label, True),
+        ("Episode", str(episode_number), True),
+        ("YouTube", youtube_url, False),
+        ("Render Time", f"{render_time:.2f} seconds", True),
+        ("Upload Time", f"{upload_time:.2f} seconds", True),
+    ]
+
+    data = {
+        "embeds": [
+            {
+                "title": f"Upload Complete: {title}",
+                "color": 0x2ECC71,
+                "thumbnail": {"url": thumbnail_url},
+                "fields": [
+                    {"name": n, "value": v, "inline": inline}
+                    for n, v, inline in fields
+                ],
+            }
+        ]
+    }
+
+    try:
+        requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=10)
+    except:
+        pass
+
 def write_summary(text):
     with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
         f.write(text)
@@ -241,10 +269,33 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     season_ep_label = f"{season_label} EP {episode_number}"
     ticker_text = f"{season_ep_label}: {episode_title}"
 
+    # Escape characters for FFmpeg drawtext
+    safe_episode_title = (
+        episode_title
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+    )
+
+    safe_season_ep_label = (
+        season_ep_label
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+    )
+
+    safe_ticker_text = (
+        ticker_text
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+    )
+
     # Escape single quotes for FFmpeg drawtext
     safe_episode_title = episode_title.replace("'", "\\'")
     safe_season_ep_label = season_ep_label.replace("'", "\\'")
-    safe_ticker_text = ticker_text.replace("'", "\\'")
+    safe_ticker_text = (
+        ticker_text
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+    )
 
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
@@ -550,9 +601,12 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbn
         return False
 
     # render_and_upload now returns: video_id, render_time, upload_time
+    youtube_title = f"{season_label} EP {ep}: {title}"
+    youtube_description = f"{season_label} EP {ep}: {title}"
+
     vid, render_time, upload_time = render_and_upload(
-        title,
-        title,
+        youtube_title,
+        youtube_description,
         season_label=season_label,
         episode_number=ep
     )
