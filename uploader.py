@@ -497,12 +497,12 @@ def upload_with_retry(path, title, description, playlist_id):
     return None
 
 def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
-    log("RENDER+UPLOAD START:", title)
+    log("RENDER+UPLOAD START:", renderer_title)
 
     # Measure render time
     import time
     t0 = time.time()
-    video_path, dur = full_render_pipeline(title, season_label, episode_number)
+    video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
     render_time = time.time() - t0
 
     log("FIRST RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
@@ -512,7 +512,7 @@ def render_and_upload(renderer_title, youtube_title, youtube_description, season
         log("RETRY RENDER")
 
         t0 = time.time()
-        video_path, dur = full_render_pipeline(title, season_label, episode_number)
+        video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
         render_time = time.time() - t0
 
         log("SECOND RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
