@@ -6,6 +6,38 @@ import requests
 import feedparser
 DEBUG = True
 
+import re
+from html import unescape
+
+# Toggle this later when your YouTube account is allowed to post links
+ALLOW_LINKS = False
+
+def clean_description(text):
+    if not text:
+        return ""
+
+    # Decode HTML entities (RSS feeds often contain them)
+    text = unescape(text)
+
+    # Remove HTML tags entirely
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Strip control characters that YouTube rejects
+    text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
+    
+    # Strip non-ASCII (emoji, etc.) to avoid YouTube edge cases
+    text = text.encode("ascii", "ignore").decode()
+    
+    if not ALLOW_LINKS:
+        # Remove protocol so URLs are no longer clickable
+        text = re.sub(r"https?://", "", text)
+
+        # Convert markdown links: [label](url) → label (url)
+        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", text)
+
+    # YouTube hard limit is 5000 chars; stay safely under
+    return text[:4900]
+
 def log(*args):
     if DEBUG:
         print("[uploader]", *args, flush=True)
@@ -226,15 +258,24 @@ def cleanup_files(*paths):
 def run_cmd(cmd):
     log("RUN CMD:", " ".join(cmd))
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8", "ignore")
-        log("CMD OK:", " ".join(cmd))
-        log("CMD OUT:", out)
-        return out
-    except subprocess.CalledProcessError as e:
-        out = e.output.decode("utf-8", "ignore")
-        log("CMD FAIL:", " ".join(cmd))
-        log("CMD OUT:", out[:2000])
-        return out
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out_bytes, err_bytes = proc.communicate()
+        out = out_bytes.decode("utf-8", "ignore")
+        err = err_bytes.decode("utf-8", "ignore")
+
+        if proc.returncode == 0:
+            log("CMD OK:", " ".join(cmd))
+            log("CMD OUT:", out)
+        else:
+            log("CMD FAIL:", " ".join(cmd), "RC:", proc.returncode)
+            log("CMD OUT:", out[:2000])
+            log("CMD ERR:", err[:2000])
+
+        # Return stdout + stderr (but separated in logs)
+        return out + ("\n" + err if err else "")
+    except Exception as e:
+        log("CMD EXCEPTION:", " ".join(cmd), "ERR:", str(e))
+        return ""
 
 def format_seconds(sec):
     m = int(sec // 60)
@@ -284,7 +325,7 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     if episode_title is None:
         episode_title = "Untitled Episode"
     if season_label is None:
-        season_label = SEASON_LABEL  # fallback
+        season_label = "Season"
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
     # REMOVE APOSTROPHES (FFmpeg-safe)
@@ -444,18 +485,23 @@ def full_render_pipeline(title, season_label, episode_number):
 # Upload logic
 def upload_video(path, title, description, playlist_id):
     log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
-    record_quota_usage(1600)
+
     cmd = ["python3", "upload.py", "--file", path, "--title", title, "--description", description]
     if playlist_id:
         cmd += ["--playlist", playlist_id]
+
     out = run_cmd(cmd)
     log("UPLOAD.PY OUT:", out[:2000])
-    # New upload.py prints ONLY the video ID on success
+
     vid = out.strip()
 
-    if not vid or len(vid) < 5:
-        log("UPLOAD FAILED: no VIDEO_ID in output")
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid):
+        log("UPLOAD FAILED: invalid VIDEO_ID format:", vid)
         return None
+
+    # Only charge quota on a valid VIDEO_ID
+    record_quota_usage(1600)
 
     log("UPLOAD SUCCESS: VIDEO_ID", vid)
     return vid
@@ -484,23 +530,46 @@ def aggressive_poll(video_id):
 
 def upload_with_retry(path, title, description, playlist_id):
     log("UPLOAD WITH RETRY:", path, title)
+
+    # FIRST ATTEMPT
     vid = upload_video(path, title, description, playlist_id)
     if not vid:
-        log("FIRST UPLOAD FAILED")
+        log("FIRST UPLOAD FAILED (no VIDEO_ID)")
         return None
-    if aggressive_poll(vid):
+
+    # POLL THE FIRST VIDEO
+    poll_result = aggressive_poll(vid)
+
+    if poll_result:
+        log("FIRST VIDEO LIVE — NO RETRY NEEDED")
         return vid
-    log("FIRST VIDEO NOT LIVE, RETRYING UPLOAD")
+
+    log("FIRST VIDEO NOT LIVE — CHECKING IF VIDEO EXISTS BEFORE RETRY")
+
+    exists_check = poll_video(vid)
+
+    if exists_check:
+        log("VIDEO EXISTS BUT IS STILL PROCESSING — NO RETRY")
+        return vid
+
+    log("FIRST VIDEO INVALID — RETRYING UPLOAD")
     send_discord_embed("Re-upload attempt", f"Video {vid} not acknowledged. Retrying.", 0xE67E22)
+
+    # SECOND ATTEMPT
     vid2 = upload_video(path, title, description, playlist_id)
     if not vid2:
-        log("SECOND UPLOAD FAILED")
+        log("SECOND UPLOAD FAILED (no VIDEO_ID)")
         return None
-    if aggressive_poll(vid2):
-        return vid2
-    log("SECOND VIDEO NOT LIVE, GIVING UP")
-    return None
 
+    poll_result_2 = aggressive_poll(vid2)
+
+    if poll_result_2:
+        log("SECOND VIDEO LIVE — SUCCESS")
+        return vid2
+
+    log("SECOND VIDEO NOT LIVE — GIVING UP")
+    return None
+    
 def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", renderer_title)
 
@@ -533,7 +602,7 @@ def render_and_upload(renderer_title, youtube_title, youtube_description, season
 
     log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
 
-    return vid, render_time, upload_time
+    return vid, render_time, upload_time, dur
 
 # RSS + queue
 def fetch_rss():
@@ -584,7 +653,8 @@ def get_episodes(feed):
 
         # Strip leading "Season X EP Y" from the title if the feed includes it
         expected_prefix = f"Season {season} EP. {ep}"
-        clean_title = title
+        from html import unescape
+        clean_title = unescape(title)
         if clean_title.startswith(expected_prefix):
             clean_title = clean_title[len(expected_prefix):].lstrip(" :-")
 
@@ -626,7 +696,8 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         return False
 
     # Clean title from get_episodes()
-    clean_title = title
+    from html import unescape
+    clean_title = unescape(title)
 
     # Canonical YouTube title (matches ticker format)
     youtube_title = f"Clinton's Core Classics - {season_label} EP {ep}: {clean_title}"
@@ -636,12 +707,13 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         f"{season_label} EP {ep} – {clean_title}\n\n"
         f"{description.strip()}"
     )
+    youtube_description = clean_description(youtube_description)
 
     # Render + upload with corrected argument order
-    vid, render_time, upload_time = render_and_upload(
-        clean_title,         # renderer title
-        youtube_title,       # YouTube title
-        youtube_description, # YouTube description
+    vid, render_time, upload_time, dur = render_and_upload(
+        clean_title,
+        youtube_title,
+        youtube_description,
         season_label=season_label,
         episode_number=ep
     )
@@ -674,12 +746,12 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
     uploaded.add(eid)
     save_uploaded(uploaded)
     stats["episodes_uploaded_today"] += 1
-    stats["total_runtime_today"] += render_time
+    stats["total_runtime_today"] += dur
     save_daily_stats(stats)
 
     send_discord_embed(
         "Upload complete",
-        f"{title}\nDuration: {format_seconds(render_time)}",
+        f"{title}\nDuration: {format_seconds(dur)}",
         0x2ECC71
     )
 
