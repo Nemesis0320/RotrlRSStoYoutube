@@ -291,22 +291,21 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
     season_ep_label = f"{season_label} EP {episode_number}"
     ticker_text = f"{season_ep_label}: {episode_title}"
 
-    # Escape characters for FFmpeg drawtext
+    # Escape characters for FFmpeg drawtext (double-quoted text="")
     def ffmpeg_escape(text):
         return (
             text
-            .replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace(",", "\\,")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("%", "\\%")
-            .replace("(", "\\(")
-            .replace(")", "\\)")
+            .replace("\\", "\\\\")   # backslash
+            .replace('"', '\\"')     # double quote
+            .replace(":", "\\:")     # colon
+            .replace(",", "\\,")     # comma
+            .replace("[", "\\[")     # [
+            .replace("]", "\\]")     # ]
+            .replace("%", "\\%")     # %
+            .replace("(", "\\(")     # (
+            .replace(")", "\\)")     # )
         )
 
-    # MUST be defined BEFORE filter_complex
     safe_episode_title = ffmpeg_escape(episode_title)
     safe_season_ep_label = ffmpeg_escape(season_ep_label)
     safe_ticker_text = ffmpeg_escape(ticker_text)
@@ -330,11 +329,11 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
 
-        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+        [bg_titleline]drawtext=fontfile={FONT_FILE}:text="{safe_season_ep_label}":x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
