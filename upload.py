@@ -9,10 +9,14 @@ from google.oauth2.credentials import Credentials
 def upload_video(file_path, title, description, playlist_id=None):
     # Load OAuth token.json
     if not os.path.exists("token.json"):
-        print("[upload] ERROR: token.json not found")
+        print("ERROR: token.json not found", file=sys.stderr)
         return None
 
-    creds = Credentials.from_authorized_user_file("token.json", ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"])
+    creds = Credentials.from_authorized_user_file(
+        "token.json",
+        ["https://www.googleapis.com/auth/youtube.upload",
+         "https://www.googleapis.com/auth/youtube"]
+    )
 
     youtube = build("youtube", "v3", credentials=creds)
 
@@ -41,13 +45,13 @@ def upload_video(file_path, title, description, playlist_id=None):
         while response is None:
             status, response = request.next_chunk()
     except Exception as e:
-        print(f"[upload] ERROR during upload: {e}")
+        print(f"ERROR during upload: {e}", file=sys.stderr)
         return None
 
     # Extract videoId
     video_id = response.get("id")
     if not video_id:
-        print("[upload] ERROR: No videoId returned")
+        print("ERROR: No videoId returned", file=sys.stderr)
         return None
 
     # Add to playlist if provided
@@ -66,7 +70,7 @@ def upload_video(file_path, title, description, playlist_id=None):
                 }
             ).execute()
         except Exception as e:
-            print(f"[upload] WARNING: Could not add to playlist: {e}")
+            print(f"WARNING: Could not add to playlist: {e}", file=sys.stderr)
 
     return video_id
 
@@ -82,7 +86,8 @@ def main():
     vid = upload_video(args.file, args.title, args.description, args.playlist)
 
     if vid:
-        print(vid) 
+        # IMPORTANT: stdout must contain ONLY the video ID
+        print(vid)
         sys.exit(0)
     else:
         sys.exit(1)
