@@ -491,13 +491,14 @@ def upload_video(path, title, description, playlist_id):
         cmd += ["--playlist", playlist_id]
 
     out = run_cmd(cmd)
+    err = ""  # run_cmd already merges stdout+stderr, so err is unused but defined
     log("UPLOAD.PY OUT:", out[:2000])
 
     vid = out.strip()
 
     import re
     # Detect YouTube upload limit exceeded
-    if "uploadLimitExceeded" in out or "uploadLimitExceeded" in err:
+    if "uploadLimitExceeded" in out:
         log("UPLOAD FAILED: YouTube upload limit exceeded")
         send_discord_embed(
             "Upload limit exceeded",
