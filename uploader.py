@@ -304,7 +304,6 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
             .replace("%", "\\%")
             .replace("(", "\\(")
             .replace(")", "\\)")
-            .replace(";", "\\;")
         )
 
     # MUST be defined BEFORE filter_complex
