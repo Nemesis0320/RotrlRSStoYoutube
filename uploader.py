@@ -307,6 +307,7 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
             .replace(";", "\\;")
         )
 
+    # MUST be defined BEFORE filter_complex
     safe_episode_title = ffmpeg_escape(episode_title)
     safe_season_ep_label = ffmpeg_escape(season_ep_label)
     safe_ticker_text = ffmpeg_escape(ticker_text)
