@@ -496,6 +496,18 @@ def upload_video(path, title, description, playlist_id):
     vid = out.strip()
 
     import re
+    # Detect YouTube upload limit exceeded
+    if "uploadLimitExceeded" in out or "uploadLimitExceeded" in err:
+        log("UPLOAD FAILED: YouTube upload limit exceeded")
+        send_discord_embed(
+            "Upload limit exceeded",
+            "YouTube is temporarily blocking new uploads.\n"
+            "The pipeline will stop until the limit resets.",
+            0xE74C3C
+        )
+        return None
+
+    # Detect invalid or missing VIDEO_ID
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid):
         log("UPLOAD FAILED: invalid VIDEO_ID format:", vid)
         return None
