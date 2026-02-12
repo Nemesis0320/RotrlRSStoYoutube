@@ -287,6 +287,11 @@ def render_video(audio, output, episode_title=None, season_label=None, episode_n
         season_label = SEASON_LABEL  # fallback
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
+    # REMOVE APOSTROPHES (FFmpeg-safe)
+    episode_title = episode_title.replace("'", "")
+    season_label = season_label.replace("'", "")
+    # episode_number is numeric, safe
+
     # Canonical labels
     season_ep_label = f"{season_label} EP {episode_number}"
     ticker_text = f"{season_ep_label}: {episode_title}"
