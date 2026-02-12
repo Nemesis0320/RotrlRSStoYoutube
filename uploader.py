@@ -266,13 +266,16 @@ def run_cmd(cmd):
         if proc.returncode == 0:
             log("CMD OK:", " ".join(cmd))
             log("CMD OUT:", out)
+            if err:
+                log("CMD ERR (ignored):", err[:2000])
         else:
             log("CMD FAIL:", " ".join(cmd), "RC:", proc.returncode)
             log("CMD OUT:", out[:2000])
             log("CMD ERR:", err[:2000])
 
-        # Return stdout + stderr (but separated in logs)
-        return out + ("\n" + err if err else "")
+        # Return ONLY stdout — never merge stderr
+        return out
+
     except Exception as e:
         log("CMD EXCEPTION:", " ".join(cmd), "ERR:", str(e))
         return ""
