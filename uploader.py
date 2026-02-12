@@ -496,7 +496,7 @@ def upload_with_retry(path, title, description, playlist_id):
     log("SECOND VIDEO NOT LIVE, GIVING UP")
     return None
 
-def render_and_upload(title, description, season_label, episode_number=None):
+def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", title)
 
     # Measure render time
@@ -523,7 +523,7 @@ def render_and_upload(title, description, season_label, episode_number=None):
 
     # Measure upload time
     t1 = time.time()
-    vid = upload_with_retry(video_path, title, description, YOUTUBE_PLAYLIST_ID)
+    vid = upload_with_retry(video_path, youtube_title, youtube_description, YOUTUBE_PLAYLIST_ID)
     upload_time = time.time() - t1
 
     log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
@@ -555,6 +555,12 @@ def get_episodes(feed):
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
 
+        # Extract description (prefer content:encoded)
+        if hasattr(e, "content") and e.content:
+            description = e.content[0].value
+        else:
+            description = getattr(e, "description", "")
+
         # Parse season/episode using naming convention
         season, ep = parse_season_episode(title)
 
@@ -577,13 +583,14 @@ def get_episodes(feed):
         if clean_title.startswith(expected_prefix):
             clean_title = clean_title[len(expected_prefix):].lstrip(" :-")
 
-        eps.append((eid, clean_title, url, season, ep))
+        # Include description in the tuple
+        eps.append((eid, clean_title, url, season, ep, description))
 
     # Sort by season then episode
     eps.sort(key=lambda x: (x[3], x[4]))
 
     # Debug print sorted order
-    for eid, title, url, season, ep in eps:
+    for eid, title, url, season, ep, description in eps:
         log("SORTED:", season, ep, title)
 
     log("EPISODE LIST BUILT:", len(eps))
@@ -591,16 +598,16 @@ def get_episodes(feed):
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url, season, ep in episodes:
+    for eid, title, url, season, ep, description in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
             log("NEXT EP FOUND:", eid, f"S{season}E{ep}", title)
-            return eid, title, url, season, ep
+            return eid, title, url, season, ep, description
     log("NO NEW EPISODES")
-    return None, None, None, None, None
+    return None, None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbnail_url=None):
+def process_episode(eid, title, url, season, ep, uploaded, stats, description="", episode_thumbnail_url=None):
     log("PROCESS EP:", eid, f"S{season}E{ep}", title)
 
     season_label = f"Season {season}"
@@ -613,19 +620,27 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, episode_thumbn
         log("DOWNLOAD FAILED:", url)
         return False
 
-    # render_and_upload now returns: video_id, render_time, upload_time
-    clean_title = title  # this is the clean title from get_episodes()
+    # Clean title from get_episodes()
+    clean_title = title
 
-    youtube_title = f"Clinton's Core Classics: {season_label} EP {ep} – {clean_title}"
-    youtube_description = f"{season_label} EP {ep} – {clean_title}"
+    # Canonical YouTube title (matches ticker format)
+    youtube_title = f"Clinton's Core Classics - {season_label} EP {ep}: {clean_title}"
 
+    # Full YouTube description (header + RSS description)
+    youtube_description = (
+        f"{season_label} EP {ep} – {clean_title}\n\n"
+        f"{description.strip()}"
+    )
+
+    # Render + upload with corrected argument order
     vid, render_time, upload_time = render_and_upload(
-        clean_title,            # renderer gets CLEAN title
-        youtube_description,    # YouTube gets CANONICAL title
+        clean_title,         # renderer title
+        youtube_title,       # YouTube title
+        youtube_description, # YouTube description
         season_label=season_label,
         episode_number=ep
     )
-    
+
     log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "RENDER:", render_time, "UPLOAD:", upload_time)
 
     if not vid:
@@ -688,14 +703,14 @@ def main():
     stats = load_daily_stats()
     stats = reset_daily_stats_if_needed(stats)
     log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url, season, ep = next_episode(uploaded, episodes)
+    eid, title, url, season, ep, description = next_episode(uploaded, episodes)
     if not eid:
         write_summary("No new episodes.")
         send_discord_embed("Idle", "No new episodes.")
         log("NO NEW EPISODES, EXIT")
         return
 
-    ok = process_episode(eid, title, url, season, ep, uploaded, stats)
+    ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
     remaining = len([e for e in episodes if e[0] not in uploaded])
     write_daily_summary(stats, remaining)
     if ok:
