@@ -6,6 +6,38 @@ import requests
 import feedparser
 DEBUG = True
 
+import re
+from html import unescape
+
+# Toggle this later when your YouTube account is allowed to post links
+ALLOW_LINKS = False
+
+def clean_description(text):
+    if not text:
+        return ""
+
+    # Decode HTML entities (RSS feeds often contain them)
+    text = unescape(text)
+
+    # Remove HTML tags entirely
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Strip control characters that YouTube rejects
+    text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
+    
+    # Strip non-ASCII (emoji, etc.) to avoid YouTube edge cases
+    text = text.encode("ascii", "ignore").decode()
+    
+    if not ALLOW_LINKS:
+        # Remove protocol so URLs are no longer clickable
+        text = re.sub(r"https?://", "", text)
+
+        # Convert markdown links: [label](url) → label (url)
+        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", text)
+
+    # YouTube hard limit is 5000 chars; stay safely under
+    return text[:4900]
+
 def log(*args):
     if DEBUG:
         print("[uploader]", *args, flush=True)
@@ -36,6 +68,35 @@ def send_discord_embed(title, description="", color=0x3498DB, fields=None, thumb
         data["embeds"][0]["thumbnail"] = {"url": "https://i.imgur.com/8QfQFQp.png"}
     if ep is not None:
         data["embeds"][0]["footer"] = {"text": f"Episode index: {ep}"}
+    try:
+        requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=10)
+    except:
+        pass
+
+def send_discord_summary(title, season_label, episode_number, youtube_url, thumbnail_url, render_time, upload_time):
+    fields = [
+        ("Season", season_label, True),
+        ("Episode", str(episode_number), True),
+        ("YouTube", youtube_url, False),
+        ("Render Time", f"{render_time:.2f} seconds", True),
+        ("Upload Time", f"{upload_time:.2f} seconds", True),
+    ]
+
+    data = {
+        "content": "",  # REQUIRED so Discord doesn't drop the embed
+        "embeds": [
+            {
+                "title": f"Upload Complete: {title}",
+                "color": 0x2ECC71,
+                "thumbnail": {"url": thumbnail_url},
+                "fields": [
+                    {"name": n, "value": v, "inline": inline}
+                    for n, v, inline in fields
+                ],
+            }
+        ]
+    }
+
     try:
         requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=10)
     except:
@@ -122,6 +183,70 @@ def save_uploaded(uploaded):
         json.dump(list(uploaded), f)
 
 # Utilities
+def send_discord_summary(
+    episode_title,
+    season_label,
+    episode_number,
+    youtube_url,
+    thumbnail_url,
+    render_time,
+    upload_time
+):
+    import requests
+    import datetime
+
+    webhook_url = DISCORD_WEBHOOK_URL
+
+    season_ep = f"{season_label} EP {episode_number}"
+
+    embed = {
+        "title": f"{season_ep} Uploaded Successfully",
+        "description": f"**{episode_title}** is now live on YouTube.",
+        "url": youtube_url,
+        "color": 0xFFD700,
+        "thumbnail": {
+            "url": thumbnail_url
+        },
+        "fields": [
+            {
+                "name": "Episode Title",
+                "value": episode_title,
+                "inline": False
+            },
+            {
+                "name": "Season / Episode",
+                "value": season_ep,
+                "inline": True
+            },
+            {
+                "name": "YouTube Link",
+                "value": youtube_url,
+                "inline": False
+            },
+            {
+                "name": "Render Time",
+                "value": f"{render_time:.2f} seconds",
+                "inline": True
+            },
+            {
+                "name": "Upload Time",
+                "value": f"{upload_time:.2f} seconds",
+                "inline": True
+            }
+        ],
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+
+    payload = {
+        "content": None,
+        "embeds": [embed]
+    }
+
+    try:
+        requests.post(webhook_url, json=payload, timeout=10)
+    except:
+        pass
+
 def cleanup_files(*paths):
     for p in paths:
         if p and os.path.exists(p):
@@ -133,15 +258,27 @@ def cleanup_files(*paths):
 def run_cmd(cmd):
     log("RUN CMD:", " ".join(cmd))
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8", "ignore")
-        log("CMD OK:", " ".join(cmd))
-        log("CMD OUT:", out)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out_bytes, err_bytes = proc.communicate()
+        out = out_bytes.decode("utf-8", "ignore")
+        err = err_bytes.decode("utf-8", "ignore")
+
+        if proc.returncode == 0:
+            log("CMD OK:", " ".join(cmd))
+            log("CMD OUT:", out)
+            if err:
+                log("CMD ERR (ignored):", err[:2000])
+        else:
+            log("CMD FAIL:", " ".join(cmd), "RC:", proc.returncode)
+            log("CMD OUT:", out[:2000])
+            log("CMD ERR:", err[:2000])
+
+        # Return ONLY stdout — never merge stderr
         return out
-    except subprocess.CalledProcessError as e:
-        out = e.output.decode("utf-8", "ignore")
-        log("CMD FAIL:", " ".join(cmd))
-        log("CMD OUT:", out[:2000])
-        return out
+
+    except Exception as e:
+        log("CMD EXCEPTION:", " ".join(cmd), "ERR:", str(e))
+        return ""
 
 def format_seconds(sec):
     m = int(sec // 60)
@@ -187,20 +324,41 @@ FONT_FILE = "assets/IMFellEnglishSC.ttf"
 
 PODCAST_TITLE = "Clinton's Core Classics"
 
-def render_video(audio, output, episode_title=None, season_label=None):
+def render_video(audio, output, episode_title=None, season_label=None, episode_number=None):
     if episode_title is None:
         episode_title = "Untitled Episode"
     if season_label is None:
-        season_label = SEASON_LABEL  # fallback
+        season_label = "Season"
     log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
 
-    ticker_text = f"Now Playing: {episode_title}"
-    
-    safe_podcast_title = PODCAST_TITLE.replace("'", r"\'")
-    safe_season_label = season_label.replace("'", r"\'")
-    safe_episode_title = episode_title.replace("'", r"\'")
-    safe_ticker_text = ticker_text.replace("'", r"\'")
-    
+    # REMOVE APOSTROPHES (FFmpeg-safe)
+    episode_title = episode_title.replace("'", "")
+    season_label = season_label.replace("'", "")
+    # episode_number is numeric, safe
+
+    # Canonical labels
+    season_ep_label = f"{season_label} EP {episode_number}"
+    ticker_text = f"{season_ep_label}: {episode_title}"
+
+    # Escape characters for FFmpeg drawtext (double-quoted text="")
+    def ffmpeg_escape(text):
+        return (
+            text
+            .replace("\\", "\\\\")   # backslash
+            .replace('"', '\\"')     # double quote
+            .replace(":", "\\:")     # colon
+            .replace(",", "\\,")     # comma
+            .replace("[", "\\[")     # [
+            .replace("]", "\\]")     # ]
+            .replace("%", "\\%")     # %
+            .replace("(", "\\(")     # (
+            .replace(")", "\\)")     # )
+        )
+
+    safe_episode_title = ffmpeg_escape(episode_title)
+    safe_season_ep_label = ffmpeg_escape(season_ep_label)
+    safe_ticker_text = ffmpeg_escape(ticker_text)
+
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
 
@@ -220,20 +378,14 @@ def render_video(audio, output, episode_title=None, season_label=None):
 
         [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
 
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text="{safe_podcast_title}":x=(w-text_w)/2:y=60:fontsize=40:fontcolor=white:shadowx=2:shadowy=2[bg_title];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
 
-        [bg_title]drawtext=fontfile={FONT_FILE}:text="{safe_season_label}":x=(w-text_w)/2:y=120:fontsize=32:fontcolor=gold:shadowx=2:shadowy=2[bg_season];
+        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
 
-        [bg_season]drawtext=fontfile={FONT_FILE}:text="{safe_episode_title}":x=(w-text_w)/2:y=180:fontsize=30:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
-
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text="{safe_ticker_text}":x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
 
         [final]fade=t=in:st=0:d=0.8[final_faded];
     """.replace("\n", " ")
-
-    # TEMP: print full v360 help (no truncation)
-    v360_help = run_cmd(["ffmpeg", "-h", "filter=v360"])
-    log("V360 HELP FULL:", v360_help)
 
     cmd = [
         "ffmpeg",
@@ -259,18 +411,15 @@ def render_video(audio, output, episode_title=None, season_label=None):
     out = run_cmd(cmd)
     log("RENDER L3-CIRC OUT:", out)
 
-    # Detect FFmpeg failure
     if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
         log("RENDER L3-CIRC ERROR DETECTED:", out[:2000])
         return False
 
-    # Detect missing or empty output file
     exists = os.path.exists(output)
     size = os.path.getsize(output) if exists else 0
     log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
 
     return exists and size > 0
-
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
@@ -279,31 +428,58 @@ def stitch_videos(v1, v2, out_path):
     run_cmd(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", out_path])
     return os.path.exists(out_path)
     
-def full_render_pipeline(title, season_label):
+def full_render_pipeline(title, season_label, episode_number):
     log("RENDER PIPELINE: start")
     dur, split = split_audio(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO)
     log("SPLIT RESULT:", "duration", dur, "split", split)
+
     if not split:
         log("SINGLE PART RENDER:", PART1_AUDIO, "->", FINAL_VIDEO)
-        if not render_video(PART1_AUDIO, FINAL_VIDEO, episode_title=title, season_label=season_label):
+        if not render_video(
+            PART1_AUDIO,
+            FINAL_VIDEO,
+            episode_title=title,
+            season_label=season_label,
+            episode_number=episode_number
+        ):
             log("RENDER FAILED: single part")
             return None, dur
+
         exists = os.path.exists(FINAL_VIDEO)
         size = os.path.getsize(FINAL_VIDEO) if exists else 0
         log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
         return FINAL_VIDEO, dur
+
     log("TWO PART RENDER:", PART1_AUDIO, "->", PART1_VIDEO, "|", PART2_AUDIO, "->", PART2_VIDEO)
-    ok1 = render_video(PART1_AUDIO, PART1_VIDEO, episode_title=title, season_label=season_label)
-    ok2 = render_video(PART2_AUDIO, PART2_VIDEO, episode_title=title, season_label=season_label)
+
+    ok1 = render_video(
+        PART1_AUDIO,
+        PART1_VIDEO,
+        episode_title=title,
+        season_label=season_label,
+        episode_number=episode_number
+    )
+
+    ok2 = render_video(
+        PART2_AUDIO,
+        PART2_VIDEO,
+        episode_title=title,
+        season_label=season_label,
+        episode_number=episode_number
+    )
+
     log("RENDER PART1 OK:", ok1, "EXISTS:", os.path.exists(PART1_VIDEO))
     log("RENDER PART2 OK:", ok2, "EXISTS:", os.path.exists(PART2_VIDEO))
+
     if not (ok1 and ok2):
         log("RENDER FAILED: one or both parts")
         return None, dur
+
     log("STITCH:", PART1_VIDEO, "+", PART2_VIDEO, "->", FINAL_VIDEO)
     if not stitch_videos(PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO):
         log("STITCH FAILED")
         return None, dur
+
     exists = os.path.exists(FINAL_VIDEO)
     size = os.path.getsize(FINAL_VIDEO) if exists else 0
     log("FINAL VIDEO EXISTS:", exists, "SIZE:", size)
@@ -312,18 +488,36 @@ def full_render_pipeline(title, season_label):
 # Upload logic
 def upload_video(path, title, description, playlist_id):
     log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
-    record_quota_usage(1600)
+
     cmd = ["python3", "upload.py", "--file", path, "--title", title, "--description", description]
     if playlist_id:
         cmd += ["--playlist", playlist_id]
+
     out = run_cmd(cmd)
+    err = ""  # run_cmd already merges stdout+stderr, so err is unused but defined
     log("UPLOAD.PY OUT:", out[:2000])
-    # New upload.py prints ONLY the video ID on success
+
     vid = out.strip()
 
-    if not vid or len(vid) < 5:
-        log("UPLOAD FAILED: no VIDEO_ID in output")
+    import re
+    # Detect YouTube upload limit exceeded
+    if "uploadLimitExceeded" in out:
+        log("UPLOAD FAILED: YouTube upload limit exceeded")
+        send_discord_embed(
+            "Upload limit exceeded",
+            "YouTube is temporarily blocking new uploads.\n"
+            "The pipeline will stop until the limit resets.",
+            0xE74C3C
+        )
         return None
+
+    # Detect invalid or missing VIDEO_ID
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid):
+        log("UPLOAD FAILED: invalid VIDEO_ID format:", vid)
+        return None
+
+    # Only charge quota on a valid VIDEO_ID
+    record_quota_usage(1600)
 
     log("UPLOAD SUCCESS: VIDEO_ID", vid)
     return vid
@@ -352,38 +546,79 @@ def aggressive_poll(video_id):
 
 def upload_with_retry(path, title, description, playlist_id):
     log("UPLOAD WITH RETRY:", path, title)
+
+    # FIRST ATTEMPT
     vid = upload_video(path, title, description, playlist_id)
     if not vid:
-        log("FIRST UPLOAD FAILED")
+        log("FIRST UPLOAD FAILED (no VIDEO_ID)")
         return None
-    if aggressive_poll(vid):
+
+    # POLL THE FIRST VIDEO
+    poll_result = aggressive_poll(vid)
+
+    if poll_result:
+        log("FIRST VIDEO LIVE — NO RETRY NEEDED")
         return vid
-    log("FIRST VIDEO NOT LIVE, RETRYING UPLOAD")
+
+    log("FIRST VIDEO NOT LIVE — CHECKING IF VIDEO EXISTS BEFORE RETRY")
+
+    exists_check = poll_video(vid)
+
+    if exists_check:
+        log("VIDEO EXISTS BUT IS STILL PROCESSING — NO RETRY")
+        return vid
+
+    log("FIRST VIDEO INVALID — RETRYING UPLOAD")
     send_discord_embed("Re-upload attempt", f"Video {vid} not acknowledged. Retrying.", 0xE67E22)
+
+    # SECOND ATTEMPT
     vid2 = upload_video(path, title, description, playlist_id)
     if not vid2:
-        log("SECOND UPLOAD FAILED")
+        log("SECOND UPLOAD FAILED (no VIDEO_ID)")
         return None
-    if aggressive_poll(vid2):
-        return vid2
-    log("SECOND VIDEO NOT LIVE, GIVING UP")
-    return None
 
-def render_and_upload(title, description, season_label):
-    log("RENDER+UPLOAD START:", title)
-    video_path, dur = full_render_pipeline(title, season_label)
-    log("FIRST RENDER RESULT:", video_path, "DUR:", dur)
+    poll_result_2 = aggressive_poll(vid2)
+
+    if poll_result_2:
+        log("SECOND VIDEO LIVE — SUCCESS")
+        return vid2
+
+    log("SECOND VIDEO NOT LIVE — GIVING UP")
+    return None
+    
+def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
+    log("RENDER+UPLOAD START:", renderer_title)
+
+    # Measure render time
+    import time
+    t0 = time.time()
+    video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
+    render_time = time.time() - t0
+
+    log("FIRST RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
+
     if not video_path:
         send_discord_embed("Render failed", "Re-rendering...", 0xE74C3C)
         log("RETRY RENDER")
-        video_path, dur = full_render_pipeline(title, season_label)
-        log("SECOND RENDER RESULT:", video_path, "DUR:", dur)
+
+        t0 = time.time()
+        video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
+        render_time = time.time() - t0
+
+        log("SECOND RENDER RESULT:", video_path, "DUR:", dur, "RENDER_TIME:", render_time)
+
         if not video_path:
             log("RENDER FAILED TWICE")
-            return None, dur
-    vid = upload_with_retry(video_path, title, description, YOUTUBE_PLAYLIST_ID)
-    log("UPLOAD RESULT VIDEO_ID:", vid)
-    return vid, dur
+            return None, render_time, None
+
+    # Measure upload time
+    t1 = time.time()
+    vid = upload_with_retry(video_path, youtube_title, youtube_description, YOUTUBE_PLAYLIST_ID)
+    upload_time = time.time() - t1
+
+    log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
+
+    return vid, render_time, upload_time, dur
 
 # RSS + queue
 def fetch_rss():
@@ -407,14 +642,14 @@ def parse_season_episode(title):
 def get_episodes(feed):
     eps = []
     for e in feed.entries:
-        eid = getattr(e, "id", None)
         title = getattr(e, "title", "Untitled")
         url = e.enclosures[0].href if getattr(e, "enclosures", None) else None
 
-        log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
-
-        if not (eid and url):
-            continue
+        # Extract description (prefer content:encoded)
+        if hasattr(e, "content") and e.content:
+            description = e.content[0].value
+        else:
+            description = getattr(e, "description", "")
 
         # Parse season/episode using naming convention
         season, ep = parse_season_episode(title)
@@ -424,14 +659,29 @@ def get_episodes(feed):
             log("IGNORING EPISODE WITH NO SEASON/EP:", title)
             continue
 
-        # Store full tuple for sorting
-        eps.append((eid, title, url, season, ep))
+        # Use stable episode key instead of RSS feed ID
+        eid = f"S{season}E{ep}"
+
+        log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
+
+        if not url:
+            continue
+
+        # Strip leading "Season X EP Y" from the title if the feed includes it
+        expected_prefix = f"Season {season} EP. {ep}"
+        from html import unescape
+        clean_title = unescape(title)
+        if clean_title.startswith(expected_prefix):
+            clean_title = clean_title[len(expected_prefix):].lstrip(" :-")
+
+        # Include description in the tuple
+        eps.append((eid, clean_title, url, season, ep, description))
 
     # Sort by season then episode
     eps.sort(key=lambda x: (x[3], x[4]))
 
     # Debug print sorted order
-    for eid, title, url, season, ep in eps:
+    for eid, title, url, season, ep, description in eps:
         log("SORTED:", season, ep, title)
 
     log("EPISODE LIST BUILT:", len(eps))
@@ -439,16 +689,16 @@ def get_episodes(feed):
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url, season, ep in episodes:
+    for eid, title, url, season, ep, description in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
             log("NEXT EP FOUND:", eid, f"S{season}E{ep}", title)
-            return eid, title, url, season, ep
+            return eid, title, url, season, ep, description
     log("NO NEW EPISODES")
-    return None, None, None, None, None
+    return None, None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, season, ep, uploaded, stats):
+def process_episode(eid, title, url, season, ep, uploaded, stats, description="", episode_thumbnail_url=None):
     log("PROCESS EP:", eid, f"S{season}E{ep}", title)
 
     season_label = f"Season {season}"
@@ -461,8 +711,31 @@ def process_episode(eid, title, url, season, ep, uploaded, stats):
         log("DOWNLOAD FAILED:", url)
         return False
 
-    vid, dur = render_and_upload(title, title, season_label=season_label)
-    log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "DUR:", dur)
+    # Clean title from get_episodes()
+    from html import unescape
+    clean_title = unescape(title)
+
+    # Canonical YouTube title (matches ticker format)
+    youtube_title = f"Clinton's Core Classics - {season_label} EP {ep}: {clean_title}"
+
+    # Full YouTube description (header + RSS description)
+    youtube_description = (
+        f"{season_label} EP {ep} – {clean_title}\n\n"
+        f"{description.strip()}"
+    )
+    youtube_description = clean_description(youtube_description)
+
+    # Render + upload with corrected argument order
+    vid, render_time, upload_time, dur = render_and_upload(
+        clean_title,
+        youtube_title,
+        youtube_description,
+        season_label=season_label,
+        episode_number=ep
+    )
+
+    log("PROCESS EP RESULT:", "VIDEO_ID:", vid, "RENDER:", render_time, "UPLOAD:", upload_time)
+
     if not vid:
         stats["failures_today"] += 1
         save_daily_stats(stats)
@@ -470,15 +743,37 @@ def process_episode(eid, title, url, season, ep, uploaded, stats):
         log("UPLOAD FAILED FOR EP:", eid)
         return False
 
+    youtube_url = f"https://www.youtube.com/watch?v={vid}"
+
+    # Episode-specific thumbnail if available; fallback otherwise.
+    thumbnail_url = episode_thumbnail_url or \
+        "https://raw.githubusercontent.com/Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
+
+    send_discord_summary(
+        youtube_title,
+        season_label,
+        ep,
+        youtube_url,
+        thumbnail_url,
+        render_time,
+        upload_time
+    )
+
     uploaded.add(eid)
     save_uploaded(uploaded)
     stats["episodes_uploaded_today"] += 1
     stats["total_runtime_today"] += dur
     save_daily_stats(stats)
-    send_discord_embed("Upload complete", f"{title}\nDuration: {format_seconds(dur)}", 0x2ECC71)
+
+    send_discord_embed(
+        "Upload complete",
+        f"{title}\nDuration: {format_seconds(dur)}",
+        0x2ECC71
+    )
+
     log("EP SUCCESS:", eid, "VIDEO_ID:", vid)
     return True
-
+    
 def write_daily_summary(stats, uploaded_count):
     text = (
         f"Date: {stats['date']}\n"
@@ -501,14 +796,14 @@ def main():
     stats = load_daily_stats()
     stats = reset_daily_stats_if_needed(stats)
     log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url, season, ep = next_episode(uploaded, episodes)
+    eid, title, url, season, ep, description = next_episode(uploaded, episodes)
     if not eid:
         write_summary("No new episodes.")
         send_discord_embed("Idle", "No new episodes.")
         log("NO NEW EPISODES, EXIT")
         return
 
-    ok = process_episode(eid, title, url, season, ep, uploaded, stats)
+    ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
     remaining = len([e for e in episodes if e[0] not in uploaded])
     write_daily_summary(stats, remaining)
     if ok:
