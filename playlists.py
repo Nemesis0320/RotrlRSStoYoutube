@@ -1,6 +1,6 @@
 import os
 import json
-from youtube_api import youtube
+from upload import youtube
 from logger import log
 
 PLAYLISTS_FILE = "playlists.json"
