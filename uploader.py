@@ -743,6 +743,10 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         log("UPLOAD FAILED FOR EP:", eid)
         return False
 
+    # Playlist automation
+    playlist_id = ensure_playlist(season_label)
+    add_video_to_playlist(vid, playlist_id)
+    
     youtube_url = f"https://www.youtube.com/watch?v={vid}"
 
     # Episode-specific thumbnail if available; fallback otherwise.
