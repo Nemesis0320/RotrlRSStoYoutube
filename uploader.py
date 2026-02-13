@@ -12,6 +12,11 @@ from html import unescape
 # Toggle this later when your YouTube account is allowed to post links
 ALLOW_LINKS = False
 
+# Internal project imports
+from playlists import ensure_playlist, add_video_to_playlist
+from logger import log
+from youtube_api import youtube
+
 def clean_description(text):
     if not text:
         return ""
@@ -702,7 +707,9 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
     log("PROCESS EP:", eid, f"S{season}E{ep}", title)
 
     season_label = f"Season {season}"
-
+    # Determine if this is a bonus episode (no season number)
+    is_bonus = season is None or season == 0 or season == ""
+    
     cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
     if not download_audio(url, AUDIO_FILE):
         stats["failures_today"] += 1
@@ -744,8 +751,12 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         return False
 
     # Playlist automation
-    playlist_id = ensure_playlist(season_label)
-    add_video_to_playlist(vid, playlist_id)
+    if is_bonus:
+        playlist_id = ensure_playlist("Bonus Episodes")
+    else:
+        playlist_id = ensure_playlist(season_label)
+
+add_video_to_playlist(vid, playlist_id)
     
     youtube_url = f"https://www.youtube.com/watch?v={vid}"
 
