@@ -15,7 +15,7 @@ ALLOW_LINKS = False
 # Internal project imports
 from playlists import ensure_playlist, add_video_to_playlist
 from logger import log
-from youtube_api import youtube
+from upload import youtube
 
 def clean_description(text):
     if not text:
