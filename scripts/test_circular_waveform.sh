@@ -3,8 +3,8 @@ set -e
 # Test Script: Circular Waveform Visualizer
 # Ensure assets directory exists
 mkdir -p assets
-echo "Fetching test audio from YouTube..."
-yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 -o assets/test_audio.mp3 "https://www.youtube.com/watch?v=6aXFNtEm7Hc"
+echo "Fetching test audio..."
+curl -L -o assets/test_audio.mp3 "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
 echo "Running FFmpeg circular waveform test..."
 ffmpeg -y -i assets/background.png -i assets/test_audio.mp3 -filter_complex_script assets/circular_waveform.ffgraph -map "[outv]" -map 1:a -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k output_test.mp4
 echo "Cleaning up test audio..."
