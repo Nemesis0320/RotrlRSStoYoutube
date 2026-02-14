@@ -4,6 +4,7 @@ import time
 import subprocess
 import requests
 import feedparser
+import sys
 DEBUG = True
 
 import re
@@ -11,6 +12,47 @@ from html import unescape
 
 # Toggle this later when your YouTube account is allowed to post links
 ALLOW_LINKS = False
+
+# Internal project imports
+from playlists import ensure_playlist
+
+# Concurrency Lock
+LOCK_FILE = "pipeline.lock"
+LOCK_TIMEOUT = 1800  # 30 minutes
+
+def acquire_lock():
+    # If lock exists, check if it's stale
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                data = json.load(f)
+            ts = data.get("timestamp", 0)
+        except Exception:
+            # Corrupted lock file — treat as stale
+            ts = 0
+
+        age = time.time() - ts
+        if age < LOCK_TIMEOUT:
+            print("[uploader] Another run is already in progress. Exiting.", file=sys.stderr)
+            sys.exit(0)
+        else:
+            print("[uploader] Stale lock detected. Clearing.", file=sys.stderr)
+            try:
+                os.remove(LOCK_FILE)
+            except Exception:
+                pass
+
+    # Create new lock
+    with open(LOCK_FILE, "w") as f:
+        json.dump({"timestamp": time.time()}, f)
+
+
+def release_lock():
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
 
 def clean_description(text):
     if not text:
@@ -40,7 +82,7 @@ def clean_description(text):
 
 def log(*args):
     if DEBUG:
-        print("[uploader]", *args, flush=True)
+        print("[uploader]", *args, file=sys.stderr, flush=True)
 from datetime import datetime, timedelta
 
 # Config
@@ -486,12 +528,15 @@ def full_render_pipeline(title, season_label, episode_number):
     return FINAL_VIDEO, dur
 
 # Upload logic
-def upload_video(path, title, description, playlist_id):
-    log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
+def upload_video(path, title, description, playlist_id, playlist_name=None):
+    log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id, "PLAYLIST_NAME:", playlist_name)
 
     cmd = ["python3", "upload.py", "--file", path, "--title", title, "--description", description]
+
     if playlist_id:
         cmd += ["--playlist", playlist_id]
+    if playlist_name:
+        cmd += ["--playlist_name", playlist_name]
 
     out = run_cmd(cmd)
     err = ""  # run_cmd already merges stdout+stderr, so err is unused but defined
@@ -544,11 +589,18 @@ def aggressive_poll(video_id):
     log("AGGRESSIVE POLL FAILED:", video_id)
     return False
 
-def upload_with_retry(path, title, description, playlist_id):
+def upload_with_retry(path, title, description, playlist_id, playlist_name):
     log("UPLOAD WITH RETRY:", path, title)
 
     # FIRST ATTEMPT
-    vid = upload_video(path, title, description, playlist_id)
+    vid = upload_video(
+        path,
+        title,
+        description,
+        playlist_id=playlist_id,
+        playlist_name=playlist_name
+    )
+
     if not vid:
         log("FIRST UPLOAD FAILED (no VIDEO_ID)")
         return None
@@ -572,7 +624,14 @@ def upload_with_retry(path, title, description, playlist_id):
     send_discord_embed("Re-upload attempt", f"Video {vid} not acknowledged. Retrying.", 0xE67E22)
 
     # SECOND ATTEMPT
-    vid2 = upload_video(path, title, description, playlist_id)
+    vid2 = upload_video(
+        path,
+        title,
+        description,
+        playlist_id=playlist_id,
+        playlist_name=playlist_name
+    )
+
     if not vid2:
         log("SECOND UPLOAD FAILED (no VIDEO_ID)")
         return None
@@ -589,8 +648,9 @@ def upload_with_retry(path, title, description, playlist_id):
 def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", renderer_title)
 
-    # Measure render time
     import time
+
+    # First render attempt
     t0 = time.time()
     video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
     render_time = time.time() - t0
@@ -609,11 +669,21 @@ def render_and_upload(renderer_title, youtube_title, youtube_description, season
 
         if not video_path:
             log("RENDER FAILED TWICE")
-            return None, render_time, None
+            return None, render_time, None, None
 
-    # Measure upload time
+    # Determine playlist name + ID
+    playlist_name = f"Clinton's Core Classics – {season_label}"
+    playlist_id = ensure_playlist(season_label)
+
+    # Upload with retry logic
     t1 = time.time()
-    vid = upload_with_retry(video_path, youtube_title, youtube_description, YOUTUBE_PLAYLIST_ID)
+    vid = upload_with_retry(
+        video_path,
+        youtube_title,
+        youtube_description,
+        playlist_id,
+        playlist_name
+    )
     upload_time = time.time() - t1
 
     log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
@@ -784,34 +854,89 @@ def write_daily_summary(stats, uploaded_count):
     )
     write_summary(text)
 
+# ---------------------------------------------------------
+# Health Check
+# ---------------------------------------------------------
+
+REQUIRED_FILES = [
+    "uploaded.json",
+    "playlists.json",
+    "daily_stats.json",
+    "token.json",
+]
+
+def health_check():
+    # 1. Ensure required files exist
+    for f in REQUIRED_FILES:
+        if not os.path.exists(f):
+            print(f"[uploader] HEALTH CHECK: Missing required file: {f}", file=sys.stderr)
+            sys.exit(1)
+
+    # 2. Ensure JSON files are valid
+    for f in ["uploaded.json", "playlists.json", "daily_stats.json"]:
+        try:
+            with open(f, "r", encoding="utf-8") as fp:
+                json.load(fp)
+        except Exception as e:
+            print(f"[uploader] HEALTH CHECK: Corrupted JSON in {f}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # 3. Ensure token.json is readable
+    try:
+        with open("token.json", "r", encoding="utf-8") as fp:
+            json.load(fp)
+    except Exception as e:
+        print(f"[uploader] HEALTH CHECK: token.json unreadable: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 4. Ensure we can write to working directory
+    try:
+        with open("healthcheck.tmp", "w") as fp:
+            fp.write("ok")
+        os.remove("healthcheck.tmp")
+    except Exception as e:
+        print(f"[uploader] HEALTH CHECK: Cannot write to working directory: {e}", file=sys.stderr)
+        sys.exit(1)
+
 def main():
-    log("MAIN START")
-    send_discord_embed("Heartbeat", "Run started.")
-    if not check_quota_safely():
-        log("ABORT: LOW QUOTA")
-        return
-    feed = fetch_rss()
-    episodes = get_episodes(feed)
-    uploaded = load_uploaded()
-    stats = load_daily_stats()
-    stats = reset_daily_stats_if_needed(stats)
-    log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url, season, ep, description = next_episode(uploaded, episodes)
-    if not eid:
-        write_summary("No new episodes.")
-        send_discord_embed("Idle", "No new episodes.")
-        log("NO NEW EPISODES, EXIT")
-        return
+    acquire_lock()
+    try:
+        health_check()
 
-    ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
-    remaining = len([e for e in episodes if e[0] not in uploaded])
-    write_daily_summary(stats, remaining)
-    if ok:
-        send_discord_embed("Run complete", f"Remaining episodes: {remaining}", 0x2ECC71)
-    else:
-        send_discord_embed("Run complete with errors", f"Remaining episodes: {remaining}", 0xE74C3C)
-    log("MAIN END: ok =", ok, "remaining =", remaining)
+        log("MAIN START")
+        send_discord_embed("Heartbeat", "Run started.")
 
+        if not check_quota_safely():
+            log("ABORT: LOW QUOTA")
+            return
+
+        feed = fetch_rss()
+        episodes = get_episodes(feed)
+        uploaded = load_uploaded()
+        stats = load_daily_stats()
+        stats = reset_daily_stats_if_needed(stats)
+        log("STATE:", "uploaded", len(uploaded), "stats", stats)
+
+        eid, title, url, season, ep, description = next_episode(uploaded, episodes)
+        if not eid:
+            write_summary("No new episodes.")
+            send_discord_embed("Idle", "No new episodes.")
+            log("NO NEW EPISODES, EXIT")
+            return
+
+        ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
+        remaining = len([e for e in episodes if e[0] not in uploaded])
+        write_daily_summary(stats, remaining)
+
+        if ok:
+            send_discord_embed("Run complete", f"Remaining episodes: {remaining}", 0x2ECC71)
+        else:
+            send_discord_embed("Run complete with errors", f"Remaining episodes: {remaining}", 0xE74C3C)
+
+        log("MAIN END: ok =", ok, "remaining =", remaining)
+
+    finally:
+        release_lock()
 
 if __name__ == "__main__":
     main()

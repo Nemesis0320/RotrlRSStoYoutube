@@ -71,8 +71,8 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
 
-      - name: Commit updated uploaded.json
+      - name: Commit updated state files
         run: |
-          git add uploaded.json daily_stats.json || true
-          git commit -m "Update uploaded episodes and daily stats" || echo "No changes to commit"
+          git add uploaded.json daily_stats.json playlists.json || true
+          git commit -m "Update uploaded episodes, playlists, and daily stats" || echo "No changes to commit"
           git push
