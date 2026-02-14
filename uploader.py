@@ -15,6 +15,44 @@ ALLOW_LINKS = False
 # Internal project imports
 from playlists import ensure_playlist
 
+# Concurrency Lock
+LOCK_FILE = "pipeline.lock"
+LOCK_TIMEOUT = 1800  # 30 minutes
+
+def acquire_lock():
+    # If lock exists, check if it's stale
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                data = json.load(f)
+            ts = data.get("timestamp", 0)
+        except Exception:
+            # Corrupted lock file — treat as stale
+            ts = 0
+
+        age = time.time() - ts
+        if age < LOCK_TIMEOUT:
+            print("[uploader] Another run is already in progress. Exiting.", file=sys.stderr)
+            sys.exit(0)
+        else:
+            print("[uploader] Stale lock detected. Clearing.", file=sys.stderr)
+            try:
+                os.remove(LOCK_FILE)
+            except Exception:
+                pass
+
+    # Create new lock
+    with open(LOCK_FILE, "w") as f:
+        json.dump({"timestamp": time.time()}, f)
+
+
+def release_lock():
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
 def clean_description(text):
     if not text:
         return ""
@@ -43,7 +81,7 @@ def clean_description(text):
 
 def log(*args):
     if DEBUG:
-        print("[uploader]", *args, flush=True)
+        print("[uploader]", *args, file=sys.stderr, flush=True)
 from datetime import datetime, timedelta
 
 # Config
@@ -815,34 +853,89 @@ def write_daily_summary(stats, uploaded_count):
     )
     write_summary(text)
 
+# ---------------------------------------------------------
+# Health Check
+# ---------------------------------------------------------
+
+REQUIRED_FILES = [
+    "uploaded.json",
+    "playlists.json",
+    "daily_stats.json",
+    "token.json",
+]
+
+def health_check():
+    # 1. Ensure required files exist
+    for f in REQUIRED_FILES:
+        if not os.path.exists(f):
+            print(f"[uploader] HEALTH CHECK: Missing required file: {f}", file=sys.stderr)
+            sys.exit(1)
+
+    # 2. Ensure JSON files are valid
+    for f in ["uploaded.json", "playlists.json", "daily_stats.json"]:
+        try:
+            with open(f, "r", encoding="utf-8") as fp:
+                json.load(fp)
+        except Exception as e:
+            print(f"[uploader] HEALTH CHECK: Corrupted JSON in {f}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # 3. Ensure token.json is readable
+    try:
+        with open("token.json", "r", encoding="utf-8") as fp:
+            json.load(fp)
+    except Exception as e:
+        print(f"[uploader] HEALTH CHECK: token.json unreadable: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 4. Ensure we can write to working directory
+    try:
+        with open("healthcheck.tmp", "w") as fp:
+            fp.write("ok")
+        os.remove("healthcheck.tmp")
+    except Exception as e:
+        print(f"[uploader] HEALTH CHECK: Cannot write to working directory: {e}", file=sys.stderr)
+        sys.exit(1)
+
 def main():
-    log("MAIN START")
-    send_discord_embed("Heartbeat", "Run started.")
-    if not check_quota_safely():
-        log("ABORT: LOW QUOTA")
-        return
-    feed = fetch_rss()
-    episodes = get_episodes(feed)
-    uploaded = load_uploaded()
-    stats = load_daily_stats()
-    stats = reset_daily_stats_if_needed(stats)
-    log("STATE:", "uploaded", len(uploaded), "stats", stats)
-    eid, title, url, season, ep, description = next_episode(uploaded, episodes)
-    if not eid:
-        write_summary("No new episodes.")
-        send_discord_embed("Idle", "No new episodes.")
-        log("NO NEW EPISODES, EXIT")
-        return
+    acquire_lock()
+    try:
+        health_check()
 
-    ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
-    remaining = len([e for e in episodes if e[0] not in uploaded])
-    write_daily_summary(stats, remaining)
-    if ok:
-        send_discord_embed("Run complete", f"Remaining episodes: {remaining}", 0x2ECC71)
-    else:
-        send_discord_embed("Run complete with errors", f"Remaining episodes: {remaining}", 0xE74C3C)
-    log("MAIN END: ok =", ok, "remaining =", remaining)
+        log("MAIN START")
+        send_discord_embed("Heartbeat", "Run started.")
 
+        if not check_quota_safely():
+            log("ABORT: LOW QUOTA")
+            return
+
+        feed = fetch_rss()
+        episodes = get_episodes(feed)
+        uploaded = load_uploaded()
+        stats = load_daily_stats()
+        stats = reset_daily_stats_if_needed(stats)
+        log("STATE:", "uploaded", len(uploaded), "stats", stats)
+
+        eid, title, url, season, ep, description = next_episode(uploaded, episodes)
+        if not eid:
+            write_summary("No new episodes.")
+            send_discord_embed("Idle", "No new episodes.")
+            log("NO NEW EPISODES, EXIT")
+            return
+
+        ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
+        remaining = len([e for e in episodes if e[0] not in uploaded])
+        write_daily_summary(stats, remaining)
+
+        if ok:
+            send_discord_embed("Run complete", f"Remaining episodes: {remaining}", 0x2ECC71)
+        else:
+            send_discord_embed("Run complete with errors", f"Remaining episodes: {remaining}", 0xE74C3C)
+
+        log("MAIN END: ok =", ok, "remaining =", remaining)
+
+    finally:
+        release_lock()
 
 if __name__ == "__main__":
     main()
