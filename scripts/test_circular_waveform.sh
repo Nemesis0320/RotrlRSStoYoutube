@@ -9,9 +9,7 @@ set -e
 mkdir -p assets
 
 echo "Fetching test audio from YouTube..."
-yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 \
-  -o assets/test_audio.%(ext)s \
-  "https://www.youtube.com/watch?v=6aXFNtEm7Hc"
+yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 -o assets/test_audio.%(ext)s "https://www.youtube.com/watch?v=6aXFNtEm7Hc"
 
 echo "Running FFmpeg circular waveform test..."
 ffmpeg -y \
