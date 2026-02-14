@@ -1,6 +1,7 @@
 import os
 import json
-from logger import log
+def log(*args):
+    print("[playlists]", *args, flush=True)
 
 PLAYLISTS_FILE = "playlists.json"
 
