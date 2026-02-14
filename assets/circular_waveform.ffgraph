@@ -2,6 +2,11 @@
 # [0:v] = background (looped PNG)
 # [1:a] = audio
 
+###############################################
+# 0. Prepare background (scale + infinite loop)
+###############################################
+[0:v]scale=720:720,loop=loop=-1:size=1:start=0,setsar=1[bg];
+
 ###############################
 # 1. Generate linear waveform #
 ###############################
@@ -15,8 +20,6 @@
 ###############################################################
 # 3. Compute amplitude map (0–1), triple amplitude intensity  #
 ###############################################################
-# amplitude = pixel brightness / 255
-# amp3 = amplitude * 3 (clamped to 1)
 [wave_gray]geq=
     lum='
         A = lum(X,Y)/255;
@@ -26,13 +29,6 @@
 
 ###############################################################
 # 4. Polar warp: map linear waveform into circular geometry   #
-###############################################################
-# r = sqrt((x-360)^2 + (y-360)^2)
-# theta = atan2(y-360, x-360)
-# Base radius = 400
-# Outward-only amplitude expansion
-# Glow radius = 40 px
-# Core radius = 400 px
 ###############################################################
 [amp_map]geq=
     lum='
@@ -46,7 +42,7 @@
         A = lum(theta*(W-1), H/2) / 255;
 
         # outward-only displacement
-        disp = A * 40 * 3;  # amplitude * glow thickness * multiplier
+        disp = A * 40 * 3;
 
         # core band (398–402)
         core = between(r, 400, 403);
@@ -54,9 +50,7 @@
         # glow band (360–440)
         glow = between(r, 360, 440);
 
-        # output brightness:
-        # core = strong
-        # glow = softer
+        # output brightness
         core*255 + glow*(A*180)
     '[polar_raw];
 
@@ -70,12 +64,8 @@
 #############################
 [core_src]geq=
     r='
-        # gold → red interpolation
         A = lum(X,Y)/255;
-        R = 255;
-        G = 215*(1-A);
-        B = 0;
-        R
+        255
     ':g='
         A = lum(X,Y)/255;
         215*(1-A)
@@ -91,8 +81,7 @@
 [glow_blur]geq=
     r='
         A = lum(X,Y)/255;
-        R = 255;
-        R
+        255
     ':g='
         A = lum(X,Y)/255;
         215*(1-A)
@@ -103,9 +92,9 @@
 #########################################
 # 8. Combine core + glow into one layer #
 #########################################
-[core_colored][glow_colored]blend=all_mode=lighten[wave_final];
+[core_colored][glow_colored]blend=all_mode=screen[wave_final];
 
 #############################
 # 9. Composite over emblem  #
 #############################
-[0:v][wave_final]overlay=0:0[outv];
+[bg][wave_final]overlay=0:0[outv];
