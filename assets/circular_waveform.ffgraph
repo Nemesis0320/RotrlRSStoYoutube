@@ -7,18 +7,24 @@
 ###############################################
 [0:v]scale=720:720,loop=loop=-1:size=1:start=0,setsar=1[bg];
 
-###############################
-# 1. Generate linear waveform #
-###############################
-[1:a]showwaves=s=720x720:mode=line:colors=white:scale=sqrt[wave_linear];
+###############################################
+# 1. Generate linear waveform (thin horizontal)
+###############################################
+# Make waveform only 40px tall so amplitude is concentrated
+[1:a]showwaves=s=720x40:mode=line:colors=white:scale=sqrt[wave_small];
+
+###############################################
+# 2. Pad waveform to 720x720 and center vertically
+###############################################
+[wave_small]pad=720:720:0:(720-40)/2[wave_padded];
 
 ########################################
-# 2. Convert to grayscale for GEQ math #
+# 3. Convert to grayscale for GEQ math #
 ########################################
-[wave_linear]format=gray[wave_gray];
+[wave_padded]format=gray[wave_gray];
 
 ###############################################################
-# 3. Compute amplitude map (0–1), triple amplitude intensity  #
+# 4. Compute amplitude map (0–1), triple amplitude intensity  #
 ###############################################################
 [wave_gray]geq=
     lum='
@@ -28,7 +34,7 @@
     '[amp_map];
 
 ###############################################################
-# 4. Polar warp: map linear waveform into circular geometry   #
+# 5. Polar warp: map linear waveform into circular geometry   #
 ###############################################################
 [amp_map]geq=
     lum='
@@ -38,7 +44,7 @@
         r = sqrt(dx*dx + dy*dy);
         theta = (atan2(dy,dx) + PI) / (2*PI);
 
-        # amplitude (0–1)
+        # amplitude (0–1) from centered waveform
         A = lum(theta*(W-1), H/2) / 255;
 
         # outward-only displacement
@@ -55,46 +61,36 @@
     '[polar_raw];
 
 ###############################################
-# 5. Split into core and glow for processing  #
+# 6. Split into core and glow for processing  #
 ###############################################
 [polar_raw]split=2[core_src][glow_src];
 
 #############################
-# 6. Core line (crisp)      #
+# 7. Core line (crisp)      #
 #############################
 [core_src]geq=
-    r='
-        A = lum(X,Y)/255;
-        255
-    ':g='
-        A = lum(X,Y)/255;
-        215*(1-A)
-    ':b='
-        0
-    '[core_colored];
+    r='255':
+    g='215*(1-(lum(X,Y)/255))':
+    b='0'
+    [core_colored];
 
 #########################################
-# 7. Glow halo (soft, medium intensity) #
+# 8. Glow halo (soft, medium intensity) #
 #########################################
 [glow_src]boxblur=lr=10:lp=2[glow_blur];
 
 [glow_blur]geq=
-    r='
-        A = lum(X,Y)/255;
-        255
-    ':g='
-        A = lum(X,Y)/255;
-        215*(1-A)
-    ':b='
-        0
-    '[glow_colored];
+    r='255':
+    g='215*(1-(lum(X,Y)/255))':
+    b='0'
+    [glow_colored];
 
 #########################################
-# 8. Combine core + glow into one layer #
+# 9. Combine core + glow into one layer #
 #########################################
 [core_colored][glow_colored]blend=all_mode=screen[wave_final];
 
 #############################
-# 9. Composite over emblem  #
+# 10. Composite over black  #
 #############################
 color=black:size=720x720[blk]; [blk][wave_final]overlay=0:0[outv];
