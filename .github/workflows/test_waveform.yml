@@ -1,0 +1,39 @@
+name: Test Circular Waveform
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/circular-waveform
+  pull_request:
+    branches:
+      - feature/circular-waveform
+
+jobs:
+  test-waveform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install yt-dlp
+        run: |
+          pip install yt-dlp
+
+      - name: Make test script executable
+        run: chmod +x scripts/test_circular_waveform.sh
+
+      - name: Run waveform test
+        run: ./scripts/test_circular_waveform.sh
+
+      - name: Upload test video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: circular-waveform-test-output
+          path: output_test.mp4
