@@ -1,96 +1,12 @@
-# DEBUG 2026-02-14 14:00 CST
-# Inputs:
-# [0:v] = background (looped PNG)
-# [1:a] = audio
-
-###############################################
-# 0. Prepare background (scale + infinite loop)
-###############################################
 [0:v]scale=720:720,loop=loop=-1:size=1:start=0,setsar=1[bg];
-
-###############################################
-# 1. Generate waveform at 720x40, line at TOP
-###############################################
 [1:a]showwaves=s=720x40:mode=line:colors=white:scale=sqrt:draw=full[wave_small];
-
-###############################################
-# 2. Pad so the line sits EXACTLY at row 360
-###############################################
 [wave_small]pad=720:720:0:360[wave_padded];
-
-########################################
-# 3. Convert to grayscale for GEQ math #
-########################################
 [wave_padded]format=gray[wave_gray];
-
-###############################################################
-# 4. Compute amplitude map (0–1), triple amplitude intensity  #
-###############################################################
-[wave_gray]geq=
-    lum='
-        A = lum(X,Y)/255;
-        A3 = clip(A*3, 0, 1);
-        255*A3
-    '[amp_map];
-
-###############################################################
-# 5. Polar warp: map linear waveform into circular geometry   #
-###############################################################
-[amp_map]geq=
-    lum='
-        # geometry
-        CX = 360; CY = 360;
-        dx = X - CX; dy = Y - CY;
-        r = sqrt(dx*dx + dy*dy);
-        theta = (atan2(dy,dx) + PI) / (2*PI);
-
-        # amplitude (0–1)
-        A = lum(theta*(W-1), H/2) / 255;
-
-        # stronger displacement
-        disp = A * 60 * 3;
-
-        # NEW core band (thicker, smaller radius)
-        core = between(r, 300, 315);
-
-        # NEW glow band (tighter, brighter)
-        glow = between(r, 280, 350);
-
-        # output brightness
-        core*255 + glow*(A*255)
-    '[polar_raw];
-
-###############################################
-# 6. Split into core and glow for processing  #
-###############################################
+[wave_gray]geq=lum='A=lum(X,Y)/255;A3=clip(A*3,0,1);255*A3'[amp_map];
+[amp_map]geq=lum='CX=360;CY=360;dx=X-CX;dy=Y-CY;r=sqrt(dx*dx+dy*dy);theta=(atan2(dy,dx)+PI)/(2*PI);A=lum(theta*(W-1),H/2)/255;disp=A*60*3;core=between(r,300,315);glow=between(r,280,350);core*255+glow*(A*255)'[polar_raw];
 [polar_raw]split=2[core_src][glow_src];
-
-#############################
-# 7. Core line (thicker + color)
-#############################
-[core_src]geq=
-    r='255':
-    g='180*(1-(lum(X,Y)/255))':
-    b='0'
-    [core_colored];
-
-#########################################
-# 8. Glow halo (stronger + color)
-#########################################
+[core_src]geq=r='255':g='180*(1-(lum(X,Y)/255))':b='0'[core_colored];
 [glow_src]boxblur=lr=20:lp=3[glow_blur];
-
-[glow_blur]geq=
-    r='255':
-    g='180*(1-(lum(X,Y)/255))':
-    b='0'
-    [glow_colored];
-
-#########################################
-# 9. Combine core + glow into one layer #
-#########################################
+[glow_blur]geq=r='255':g='180*(1-(lum(X,Y)/255))':b='0'[glow_colored];
 [core_colored][glow_colored]blend=all_mode=screen[wave_final];
-
-#############################
-# 10. Composite over black  #
-#############################
-color=black:size=720x720[blk]; [blk][wave_final]overlay=0:0[outv];
+color=black:size=720x720[blk];[blk][wave_final]overlay=0:0[outv];
