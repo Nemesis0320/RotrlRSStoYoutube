@@ -1,3 +1,8 @@
+echo "===== DEBUG: CURRENT WORKING DIRECTORY ====="
+pwd
+echo "===== DEBUG: LISTING ASSETS FOLDER ====="
+ls -l assets
+echo "===== END DEBUG ====="
 #!/usr/bin/env bash
 set -e
 
