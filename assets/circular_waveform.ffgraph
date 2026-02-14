@@ -7,11 +7,6 @@
 
 [amp_map]geq=lum='between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),300,315)*255 + between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),280,350)*lum((atan2(Y-360,X-360)+PI)/(2*PI)*(W-1),H/2)'[polar_raw];
 
-[polar_raw]split=2[core_src][glow_src];
+[polar_raw]format=rgba[wave_final];
 
-[core_src]geq=r='255':g='180*(1-(lum(X,Y)/255))':b='0'[core_colored];
-[glow_src]boxblur=lr=20:lp=3[glow_blur];
-[glow_blur]geq=r='255':g='180*(1-(lum(X,Y)/255))':b='0'[glow_colored];
-
-[core_colored][glow_colored]blend=all_mode=screen[wave_final];
 color=black:size=720x720[blk];[blk][wave_final]overlay=0:0[outv];
