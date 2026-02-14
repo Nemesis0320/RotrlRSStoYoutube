@@ -8,15 +8,14 @@
 [0:v]scale=720:720,loop=loop=-1:size=1:start=0,setsar=1[bg];
 
 ###############################################
-# 1. Generate linear waveform (thin horizontal)
+# 1. Generate waveform at 720x40, line at TOP
 ###############################################
-# Make waveform only 40px tall so amplitude is concentrated
-[1:a]showwaves=s=720x40:mode=line:colors=white:scale=sqrt[wave_small];
+[1:a]showwaves=s=720x40:mode=line:colors=white:scale=sqrt:draw=full[wave_small];
 
 ###############################################
-# 2. Pad waveform to 720x720 and center vertically
+# 2. Pad so the line sits EXACTLY at row 360
 ###############################################
-[wave_small]pad=720:720:0:(720-40)/2[wave_padded];
+[wave_small]pad=720:720:0:360[wave_padded];
 
 ########################################
 # 3. Convert to grayscale for GEQ math #
@@ -44,20 +43,20 @@
         r = sqrt(dx*dx + dy*dy);
         theta = (atan2(dy,dx) + PI) / (2*PI);
 
-        # amplitude (0–1) from centered waveform
+        # amplitude (0–1)
         A = lum(theta*(W-1), H/2) / 255;
 
-        # outward-only displacement
-        disp = A * 40 * 3;
+        # stronger displacement
+        disp = A * 60 * 3;
 
-        # core band (398–402)
-        core = between(r, 400, 403);
+        # NEW core band (thicker, smaller radius)
+        core = between(r, 300, 315);
 
-        # glow band (360–440)
-        glow = between(r, 360, 440);
+        # NEW glow band (tighter, brighter)
+        glow = between(r, 280, 350);
 
         # output brightness
-        core*255 + glow*(A*180)
+        core*255 + glow*(A*255)
     '[polar_raw];
 
 ###############################################
@@ -66,22 +65,22 @@
 [polar_raw]split=2[core_src][glow_src];
 
 #############################
-# 7. Core line (crisp)      #
+# 7. Core line (thicker + color)
 #############################
 [core_src]geq=
     r='255':
-    g='215*(1-(lum(X,Y)/255))':
+    g='180*(1-(lum(X,Y)/255))':
     b='0'
     [core_colored];
 
 #########################################
-# 8. Glow halo (soft, medium intensity) #
+# 8. Glow halo (stronger + color)
 #########################################
-[glow_src]boxblur=lr=10:lp=2[glow_blur];
+[glow_src]boxblur=lr=20:lp=3[glow_blur];
 
 [glow_blur]geq=
     r='255':
-    g='215*(1-(lum(X,Y)/255))':
+    g='180*(1-(lum(X,Y)/255))':
     b='0'
     [glow_colored];
 
