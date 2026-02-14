@@ -1,0 +1,34 @@
+# circular_waveform.ffgraph v0.1
+# Inputs:
+#   [0:v] - background image (emblem)
+#   [1:a] - audio track
+
+########################################
+# 1. Prepare background
+########################################
+
+[0:v]scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2:bg=black[bg];
+
+########################################
+# 2. Generate linear waveform
+########################################
+
+[1:a]showwaves=s=720x720:mode=line:colors=white[wave_linear];
+
+########################################
+# 3. Warp linear waveform into circular form
+########################################
+
+[wave_linear]format=gray,geq=lum='between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),320,340)*lum(((atan2(Y-360,X-360)+PI)/(2*PI))*(W-1),((sqrt((X-360)*(X-360)+(Y-360)*(Y-360))-320)/20)*(H-1))'[wave_circular];
+
+########################################
+# 4. Convert circular waveform into alpha matte
+########################################
+
+[wave_circular]format=rgba[wave_alpha];
+
+########################################
+# 5. Composite background + waveform
+########################################
+
+[bg][wave_alpha]overlay=0:0[outv];
