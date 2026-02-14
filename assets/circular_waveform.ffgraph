@@ -97,4 +97,4 @@
 #############################
 # 9. Composite over emblem  #
 #############################
-[bg][wave_final]overlay=0:0[outv];
+color=black:size=720x720[blk]; [blk][wave_final]overlay=0:0[outv];
