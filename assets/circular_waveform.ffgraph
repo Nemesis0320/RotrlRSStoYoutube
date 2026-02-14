@@ -2,5 +2,5 @@
 [1:a]showwaves=s=1200x200:mode=line:colors=white:scale=sqrt:draw=full,format=gray[wave_raw];
 [wave_raw]boxblur=0:0[wave_blur];
 [wave_blur]pad=1200:1200:0:(1200-ih)/2[wave_padded];
-[wave_padded]geq=lum='between(sqrt((X-600)*(X-600)+(Y-555)*(Y-555)),270,272)*4*lum((atan2(Y-555,X-600)+PI)/(2*PI)*(W-1),600)'[ring_base];
+[wave_padded]geq=lum='between(sqrt((X-600)*(X-600)+(Y-555)*(Y-555)),271.4,271.8)*16*lum((atan2(Y-555,X-600)+PI)/(2*PI)*(W-1),600)'[ring_base];
 [bg][ring_base]overlay=0:0[outv];
