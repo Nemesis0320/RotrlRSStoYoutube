@@ -13,7 +13,7 @@ from html import unescape
 ALLOW_LINKS = False
 
 # Internal project imports
-from playlists import ensure_playlist, add_video_to_playlist
+from playlists import ensure_playlist
 from logger import log
 
 def clean_description(text):
@@ -490,12 +490,15 @@ def full_render_pipeline(title, season_label, episode_number):
     return FINAL_VIDEO, dur
 
 # Upload logic
-def upload_video(path, title, description, playlist_id):
-    log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id)
+def upload_video(path, title, description, playlist_id, playlist_name=None):
+    log("UPLOAD VIDEO:", path, "TITLE:", title, "PLAYLIST:", playlist_id, "PLAYLIST_NAME:", playlist_name)
 
     cmd = ["python3", "upload.py", "--file", path, "--title", title, "--description", description]
+
     if playlist_id:
         cmd += ["--playlist", playlist_id]
+    if playlist_name:
+        cmd += ["--playlist_name", playlist_name]
 
     out = run_cmd(cmd)
     err = ""  # run_cmd already merges stdout+stderr, so err is unused but defined
@@ -548,11 +551,18 @@ def aggressive_poll(video_id):
     log("AGGRESSIVE POLL FAILED:", video_id)
     return False
 
-def upload_with_retry(path, title, description, playlist_id):
+def upload_with_retry(path, title, description, playlist_id, playlist_name):
     log("UPLOAD WITH RETRY:", path, title)
 
     # FIRST ATTEMPT
-    vid = upload_video(path, title, description, playlist_id)
+    vid = upload_video(
+        path,
+        title,
+        description,
+        playlist_id=playlist_id,
+        playlist_name=playlist_name
+    )
+
     if not vid:
         log("FIRST UPLOAD FAILED (no VIDEO_ID)")
         return None
@@ -576,7 +586,14 @@ def upload_with_retry(path, title, description, playlist_id):
     send_discord_embed("Re-upload attempt", f"Video {vid} not acknowledged. Retrying.", 0xE67E22)
 
     # SECOND ATTEMPT
-    vid2 = upload_video(path, title, description, playlist_id)
+    vid2 = upload_video(
+        path,
+        title,
+        description,
+        playlist_id=playlist_id,
+        playlist_name=playlist_name
+    )
+
     if not vid2:
         log("SECOND UPLOAD FAILED (no VIDEO_ID)")
         return None
@@ -593,8 +610,9 @@ def upload_with_retry(path, title, description, playlist_id):
 def render_and_upload(renderer_title, youtube_title, youtube_description, season_label, episode_number=None):
     log("RENDER+UPLOAD START:", renderer_title)
 
-    # Measure render time
     import time
+
+    # First render attempt
     t0 = time.time()
     video_path, dur = full_render_pipeline(renderer_title, season_label, episode_number)
     render_time = time.time() - t0
@@ -613,11 +631,21 @@ def render_and_upload(renderer_title, youtube_title, youtube_description, season
 
         if not video_path:
             log("RENDER FAILED TWICE")
-            return None, render_time, None
+            return None, render_time, None, None
 
-    # Measure upload time
+    # Determine playlist name + ID
+    playlist_name = f"Clinton's Core Classics – {season_label}"
+    playlist_id = ensure_playlist(season_label)
+
+    # Upload with retry logic
     t1 = time.time()
-    vid = upload_with_retry(video_path, youtube_title, youtube_description, YOUTUBE_PLAYLIST_ID)
+    vid = upload_with_retry(
+        video_path,
+        youtube_title,
+        youtube_description,
+        playlist_id,
+        playlist_name
+    )
     upload_time = time.time() - t1
 
     log("UPLOAD RESULT VIDEO_ID:", vid, "UPLOAD_TIME:", upload_time)
@@ -746,14 +774,6 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         send_discord_embed("Upload failed", title, 0xE74C3C)
         log("UPLOAD FAILED FOR EP:", eid)
         return False
-
-    # Playlist automation (bonus-aware)
-    if season is None or season == 0 or season == "":
-        playlist_id = ensure_playlist("Bonus Episodes")
-    else:
-        playlist_id = ensure_playlist(season_label)
-
-    add_video_to_playlist(vid, playlist_id)
 
     youtube_url = f"https://www.youtube.com/watch?v={vid}"
 
