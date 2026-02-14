@@ -1,7 +1,8 @@
 import os
 import json
+import sys
 def log(*args):
-    print("[playlists]", *args, flush=True)
+    print("[playlists]", *args, file=sys.stderr, flush=True)
 
 PLAYLISTS_FILE = "playlists.json"
 
