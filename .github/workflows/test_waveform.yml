@@ -29,6 +29,10 @@ jobs:
       - name: Make test script executable
         run: chmod +x scripts/test_circular_waveform.sh
 
+      # fixes CRLF in the ffgraph file
+      - name: Normalize ffgraph line endings
+        run: sed -i 's/\r$//' assets/circular_waveform.ffgraph
+
       - name: Run waveform test
         run: ./scripts/test_circular_waveform.sh
 
