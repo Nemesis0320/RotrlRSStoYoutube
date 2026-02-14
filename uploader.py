@@ -14,7 +14,6 @@ ALLOW_LINKS = False
 
 # Internal project imports
 from playlists import ensure_playlist
-from logger import log
 
 def clean_description(text):
     if not text:
