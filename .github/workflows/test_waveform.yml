@@ -29,17 +29,6 @@ jobs:
       - name: Make test script executable
         run: chmod +x scripts/test_circular_waveform.sh
 
-      - name: Recreate ffgraph file inside runner
-        run: |
-          mkdir -p assets
-          cat > assets/circular_waveform.ffgraph << 'EOF'
-          [0:v]scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2:color=black[bg];
-          [1:a]showwaves=s=720x720:mode=line:colors=white[wave_linear];
-          [wave_linear]format=gray,geq=lum='between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),320,340)*lum(((atan2(Y-360,X-360)+PI)/(2*PI))*(W-1),((sqrt((X-360)*(X-360)+(Y-360)*(Y-360))-320)/20)*(H-1))'[wave_circular];
-          [wave_circular]format=rgba[wave_alpha];
-          [bg][wave_alpha]overlay=0:0[outv];
-          EOF
-
       - name: Run waveform test
         run: ./scripts/test_circular_waveform.sh
 
