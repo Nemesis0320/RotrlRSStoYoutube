@@ -9,4 +9,4 @@
 
 [polar_raw]format=rgba[wave_final];
 
-color=black:size=720x720[blk];[blk][wave_final]overlay=0:0[outv];
+[bg][wave_final]overlay=0:0[outv];
