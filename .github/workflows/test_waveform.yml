@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feature/circular-waveform
+      - circular-waveform
   pull_request:
     branches:
-      - feature/circular-waveform
+      - circular-waveform
 
 jobs:
   test-waveform:
