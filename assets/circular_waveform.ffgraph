@@ -2,7 +2,7 @@
 [1:a]showwaves=s=720x40:mode=line:colors=white:scale=sqrt:draw=full[wave_small];
 [wave_small]pad=720:720:0:360[wave_padded];
 [wave_padded]format=gray[wave_gray];
-[wave_gray]geq=lum='255*clip(lum(X,Y)/255*3,0,1)'[amp_map];
+[wave_gray]geq=lum='255*if(gt(lum(X,Y)/255*3,1),1,lum(X,Y)/255*3)'[amp_map];
 [amp_map]geq=lum='between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),300,315)*255 + between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),280,350)*(lum((atan2(Y-360,X-360)+PI)/(2*PI)*(W-1),H/2)/255)*255'[polar_raw];
 [polar_raw]split=2[core_src][glow_src];
 [core_src]geq=r='255':g='180*(1-(lum(X,Y)/255))':b='0'[core_colored];
