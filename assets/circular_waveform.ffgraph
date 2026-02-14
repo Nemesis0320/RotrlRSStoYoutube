@@ -9,7 +9,13 @@
 between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),300,315)*255
 +
 between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),280,350)
-    * (lum(((atan2(Y-360,X-360)+PI)/(2*PI))*(W-1),H/2)/255)*255
+*
+(
+    lum(
+        (atan2(Y-360,X-360)+PI)/(2*PI)*(W-1),
+        H/2
+    )/255
+)*255
 '[polar_raw];
 
 [polar_raw]split=2[core_src][glow_src];
