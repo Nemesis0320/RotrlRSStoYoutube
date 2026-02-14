@@ -1,34 +1,111 @@
-# circular_waveform.ffgraph v0.1
 # Inputs:
-#   [0:v] - background image (emblem)
-#   [1:a] - audio track
+# [0:v] = background (looped PNG)
+# [1:a] = audio
+
+###############################
+# 1. Generate linear waveform #
+###############################
+[1:a]showwaves=s=720x720:mode=line:colors=white:scale=sqrt[wave_linear];
 
 ########################################
-# 1. Prepare background
+# 2. Convert to grayscale for GEQ math #
 ########################################
+[wave_linear]format=gray[wave_gray];
 
-[0:v]scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2:bg=black[bg];
+###############################################################
+# 3. Compute amplitude map (0–1), triple amplitude intensity  #
+###############################################################
+# amplitude = pixel brightness / 255
+# amp3 = amplitude * 3 (clamped to 1)
+[wave_gray]geq=
+    lum='
+        A = lum(X,Y)/255;
+        A3 = clip(A*3, 0, 1);
+        255*A3
+    '[amp_map];
 
-########################################
-# 2. Generate linear waveform
-########################################
+###############################################################
+# 4. Polar warp: map linear waveform into circular geometry   #
+###############################################################
+# r = sqrt((x-360)^2 + (y-360)^2)
+# theta = atan2(y-360, x-360)
+# Base radius = 400
+# Outward-only amplitude expansion
+# Glow radius = 40 px
+# Core radius = 400 px
+###############################################################
+[amp_map]geq=
+    lum='
+        # geometry
+        CX = 360; CY = 360;
+        dx = X - CX; dy = Y - CY;
+        r = sqrt(dx*dx + dy*dy);
+        theta = (atan2(dy,dx) + PI) / (2*PI);
 
-[1:a]showwaves=s=720x720:mode=line:colors=white[wave_linear];
+        # amplitude (0–1)
+        A = lum(theta*(W-1), H/2) / 255;
 
-########################################
-# 3. Warp linear waveform into circular form
-########################################
+        # outward-only displacement
+        disp = A * 40 * 3;  # amplitude * glow thickness * multiplier
 
-[wave_linear]format=gray,geq=lum='between(sqrt((X-360)*(X-360)+(Y-360)*(Y-360)),320,340)*lum(((atan2(Y-360,X-360)+PI)/(2*PI))*(W-1),((sqrt((X-360)*(X-360)+(Y-360)*(Y-360))-320)/20)*(H-1))'[wave_circular];
+        # core band (398–402)
+        core = between(r, 400, 403);
 
-########################################
-# 4. Convert circular waveform into alpha matte
-########################################
+        # glow band (360–440)
+        glow = between(r, 360, 440);
 
-[wave_circular]format=rgba[wave_alpha];
+        # output brightness:
+        # core = strong
+        # glow = softer
+        core*255 + glow*(A*180)
+    '[polar_raw];
 
-########################################
-# 5. Composite background + waveform
-########################################
+###############################################
+# 5. Split into core and glow for processing  #
+###############################################
+[polar_raw]split=2[core_src][glow_src];
 
-[bg][wave_alpha]overlay=0:0[outv];
+#############################
+# 6. Core line (crisp)      #
+#############################
+[core_src]geq=
+    r='
+        # gold → red interpolation
+        A = lum(X,Y)/255;
+        R = 255;
+        G = 215*(1-A);
+        B = 0;
+        R
+    ':g='
+        A = lum(X,Y)/255;
+        215*(1-A)
+    ':b='
+        0
+    '[core_colored];
+
+#########################################
+# 7. Glow halo (soft, medium intensity) #
+#########################################
+[glow_src]boxblur=lr=10:lp=2[glow_blur];
+
+[glow_blur]geq=
+    r='
+        A = lum(X,Y)/255;
+        R = 255;
+        R
+    ':g='
+        A = lum(X,Y)/255;
+        215*(1-A)
+    ':b='
+        0
+    '[glow_colored];
+
+#########################################
+# 8. Combine core + glow into one layer #
+#########################################
+[core_colored][glow_colored]blend=all_mode=lighten[wave_final];
+
+#############################
+# 9. Composite over emblem  #
+#############################
+[0:v][wave_final]overlay=0:0[outv];
