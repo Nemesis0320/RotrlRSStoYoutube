@@ -1,8 +1,4 @@
-[0:v]scale=1200:1200,setsar=1[bg];
 [1:a]showwaves=s=1200x200:mode=line:colors=white:scale=sqrt:draw=full,format=gray[wave_raw];
 [wave_raw]boxblur=2:1[wave_blur];
 [wave_blur]pad=1200:1200:0:(1200-ih)/2[wave_padded];
 [wave_padded]format=rgba[outv];
-[ring_base]format=rgba,colorkey=black:0.01:0[ring_keyed];
-[ring_keyed]boxblur=20:2[wave_final];
-[bg][wave_final]overlay=0:0[outv];
