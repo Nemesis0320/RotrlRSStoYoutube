@@ -46,6 +46,11 @@ jobs:
             -filter_complex "showwaves=s=1200x80:mode=p2p:colors=white:scale=lin*8" \
             -frames:v 1 -update 1 wave_linear.png
 
+      - name: DEBUG — list everything
+        run: |
+          pwd
+          ls -R .
+
       - name: Warp waveform into circular ring
         run: python3 scripts/warp_waveform.py
 
