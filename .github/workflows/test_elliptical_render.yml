@@ -1,6 +1,9 @@
 name: Test Elliptical Render
 on:
-  workflow_dispatch:
+     push:
+       branches:
+         - elliptical-waveform-v2
+     workflow_dispatch:
 
 jobs:
   test-render:
