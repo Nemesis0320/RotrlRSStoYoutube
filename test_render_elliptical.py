@@ -107,6 +107,7 @@ def render_elliptical_waveform():
         "ffmpeg", "-y",
         "-loop", "1", "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
+        "-i", REMAP_FILE,
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "1:a",
