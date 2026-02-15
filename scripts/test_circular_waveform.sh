@@ -10,12 +10,8 @@ echo "===== END DEBUG ====="
 echo "Fetching test audio..."
 curl -L -o assets/test_audio.mp3 "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
 
-echo "Running FFmpeg circular waveform test..."
-
-ffmpeg -y \
-  -loop 1 -i assets/1200x1200bf.webp \
-  -i assets/test_audio.mp3 \
-  -filter_complex "$(cat << 'EOF'
+echo "Writing temporary filtergraph..."
+cat > /tmp/cwf.ffgraph << 'EOF'
 [0:v]scale=1200:1200,setsar=1[bg];
 [1:a]showwaves=s=1200x300:mode=p2p:colors=white:scale=sqrt[wave_raw];
 [wave_raw]format=rgba,colorchannelmixer=rr=1:rg=0.4:rb=0:gr=0.8:gg=0.2:gb=0:br=0.3:bg=0:bb=0[wave_color];
@@ -24,7 +20,17 @@ ffmpeg -y \
 [ring_raw]gblur=sigma=8[ring_glow];
 [bg][ring_glow]overlay=0:0[outv]
 EOF
-)" \
+
+echo "===== DEBUG: PRINTING TEMP FILTERGRAPH ====="
+cat /tmp/cwf.ffgraph
+echo "===== END DEBUG ====="
+
+echo "Running FFmpeg circular waveform test..."
+
+ffmpeg -y \
+  -loop 1 -i assets/1200x1200bf.webp \
+  -i assets/test_audio.mp3 \
+  -filter_complex_script /tmp/cwf.ffgraph \
   -map "[outv]" -map 1:a \
   -c:v libx264 -preset veryfast -crf 18 \
   -c:a aac -b:a 192k \
