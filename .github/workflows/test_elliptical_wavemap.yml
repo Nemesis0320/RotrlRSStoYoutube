@@ -33,7 +33,7 @@ jobs:
         run: |
           ffmpeg -y -i assets/test_audio.mp3 \
             -filter_complex "showwaves=s=1200x5:mode=p2p:colors=white:scale=lin*8,format=gray" \
-            -r 30 -pix_fmt yuv420p wave_linear.mp4
+            -r 12 -pix_fmt yuv420p wave_linear.mp4
 
       - name: Warp waveform with remap and overlay on emblem
         run: |
