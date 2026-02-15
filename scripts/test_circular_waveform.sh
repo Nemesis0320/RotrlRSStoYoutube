@@ -30,7 +30,7 @@ echo "Running FFmpeg circular waveform test..."
 ffmpeg -y \
   -loop 1 -i assets/1200x1200bf.webp \
   -i assets/test_audio.mp3 \
-  -filter_complex_script /tmp/cwf.ffgraph \
+  -filter_complex "$(cat /tmp/cwf.ffgraph)" \
   -map "[outv]" -map 1:a \
   -c:v libx264 -preset veryfast -crf 18 \
   -c:a aac -b:a 192k \
