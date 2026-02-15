@@ -2,12 +2,13 @@ name: Test Elliptical Render
 on:
   push:
     branches:
-      - elliptical-waveform-v2
+      - elliptical-waveform-v3
   workflow_dispatch:
 
 jobs:
   test-render:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
