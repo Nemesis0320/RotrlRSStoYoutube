@@ -43,8 +43,9 @@ jobs:
         run: |
           ffmpeg -y -loop 1 -i assets/1200x1200bf.webp -i wave_circle.png \
             -filter_complex "[0][1]overlay=0:0" \
-            -c:v libx264 -preset ultrafast -crf 18 \
-            -shortest output_test.mp4
+            -c:v mjpeg \
+            -q:v 3 \
+            -shortest output_test.avi
 
       - name: Upload test video artifact
         uses: actions/upload-artifact@v4
