@@ -37,16 +37,22 @@ def run_cmd(cmd):
         log(f"OUTPUT: {result.stdout}")
     return True
 
-def download_test_audio():
-    """Download test audio file."""
-    log("Downloading test audio...")
+def generate_test_audio():
+    """Generate a test audio file with FFmpeg."""
+    log("Generating test audio...")
     if os.path.exists(TEST_AUDIO_FILE):
-        log("Test audio already exists, skipping download")
+        log("Test audio already exists, skipping generation")
         return True
     
-    # Download Dreamcast boot sound
-    TEST_URL = "https://downloads.khinsider.com/game-soundtracks/album/dreamcast-bios-1998-dreamcast-gamerip/01.%2520Bootup.mp3"
-    cmd = ["wget", "-O", TEST_AUDIO_FILE, TEST_URL]
+    # Generate 7 seconds of 440Hz sine wave
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", "sine=frequency=440:duration=7",
+        "-ar", "44100",
+        "-ac", "2",
+        TEST_AUDIO_FILE
+    ]
     return run_cmd(cmd)
 
 def generate_remap_table():
@@ -111,9 +117,9 @@ def render_elliptical_waveform():
 def main():
     log("Starting elliptical waveform test")
     
-    # Step 1: Download test audio
-    if not download_test_audio():
-        log("Failed to download test audio")
+    # Step 1: Generate test audio
+    if not generate_test_audio():
+        log("Failed to generate test audio")
         sys.exit(1)
     
     # Step 2: Generate remap table
