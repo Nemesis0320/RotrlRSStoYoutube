@@ -10,12 +10,12 @@ echo "===== END DEBUG ====="
 echo "Fetching test audio..."
 curl -L -o assets/test_audio.mp3 "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
 
-echo "Running FFmpeg circular waveform test (no warp, full-frame waveform)..."
+echo "Running FFmpeg circular waveform test (bright, full-frame, no warp)..."
 
 ffmpeg -y \
   -loop 1 -i assets/1200x1200bf.webp \
   -i assets/test_audio.mp3 \
-  -filter_complex "[0:v]scale=1200:1200,setsar=1[bg];[1:a]showwaves=s=1200x1200:mode=p2p:colors=white:scale=sqrt[wave_raw];[wave_raw]format=rgba,colorchannelmixer=rr=1:rg=0.4:rb=0:gr=0.8:gg=0.2:gb=0:br=0.3:bg=0:bb=0[wave_color];[wave_color]gblur=sigma=8[wave_glow];[bg][wave_glow]overlay=0:0[outv]" \
+  -filter_complex "[0:v]scale=1200:1200,setsar=1[bg];[1:a]showwaves=s=1200x1200:mode=p2p:colors=white:scale=lin*4[wave_raw];[wave_raw]format=rgba,colorchannelmixer=rr=1:rg=0.4:rb=0:gr=0.8:gg=0.2:gb=0:br=0.3:bg=0:bb=0[wave_color];[wave_color]eq=brightness=0.2:contrast=1.8[wave_bright];[wave_bright]gblur=sigma=8[wave_glow];[bg][wave_glow]overlay=0:0[outv]" \
   -map "[outv]" -map 1:a \
   -c:v libx264 -preset veryfast -crf 18 \
   -c:a aac -b:a 192k \
