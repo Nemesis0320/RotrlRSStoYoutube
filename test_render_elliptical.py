@@ -82,12 +82,12 @@ def render_elliptical_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # Build filter complex for elliptical waveform
+    # For now, just test with a circular waveform using polar coordinates
+    # This validates the pipeline before implementing the elliptical transform
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_linear];
-        [wave_linear][2:v]remap[wave_warped];
-        [bg][wave_warped]overlay=0:0[bg_wave];
+        [1:a]showwaves=s={VIDEO_SIZE}:mode=cline:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
+        [bg][wave]overlay=0:0[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -97,7 +97,6 @@ def render_elliptical_waveform():
         "ffmpeg", "-y",
         "-loop", "1", "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
-        "-loop", "1", "-i", REMAP_FILE,
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "1:a",
