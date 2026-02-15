@@ -18,6 +18,7 @@ VIDEO_CRF = 30
 AUDIO_BITRATE = "64k"
 BG_IMAGE = "assets/1200x1200bf.png"
 FONT_FILE = "assets/IMFellEnglishSC.ttf"
+CIRCLE_MASK = "assets/circle_mask_720.png"
 
 def log(msg):
     print(f"[test] {msg}", flush=True)
@@ -48,7 +49,7 @@ def get_audio_duration(path):
     try:
         return float(result.stdout.strip())
     except:
-        return 10.0  # fallback
+        return 10.0
 
 def download_test_audio():
     """Download test audio file."""
@@ -62,12 +63,11 @@ def download_test_audio():
     return run_cmd(cmd)
 
 def render_circular_waveform():
-    log("Rendering circular waveform with p2p mode...")
+    log("Rendering circular waveform with mask...")
     
     duration = get_audio_duration(TEST_AUDIO_FILE)
     log(f"Audio duration: {duration:.2f} seconds")
     
-    # Test metadata
     episode_title = "Test File"
     season_label = "Season 1"
     episode_number = "0"
@@ -86,12 +86,18 @@ def render_circular_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # UPDATED: mode=p2p creates a smooth circular ring (point-to-point)
+    # Use your working production approach with circular mask
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]asplit[a_out][a_wave];
-        [a_wave]showwaves=s={VIDEO_SIZE}:mode=p2p:rate={VIDEO_FPS}:colors=gold:scale=sqrt:draw=scale[wave];
-        [bg][wave]overlay=0:0[bg_wave];
+        [1:a]asplit=2[a_main][a_clip];
+        [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
+        [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
+        [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
+        [wave_inner]copy[polar_inner];
+        [wave_clip_masked]copy[polar_clip];
+        [polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
+        [combined][2:v]alphamerge[circ_wave];
+        [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -101,9 +107,10 @@ def render_circular_waveform():
         "ffmpeg", "-y",
         "-loop", "1", "-t", str(duration), "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
+        "-i", CIRCLE_MASK,
         "-filter_complex", filter_complex,
         "-map", "[final]",
-        "-map", "[a_out]",
+        "-map", "[a_main]",
         "-r", str(VIDEO_FPS),
         "-c:v", "libx264",
         "-preset", "veryfast",
