@@ -115,7 +115,7 @@ def render_waveform():
         "-loop", "1", "-t", str(duration), "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
         "-i", "ellipse_remap.ppm",
-        "-filter_complex", filter_complex,
+        "-filter_complex_script", "circle_filtergraph.txt",
         "-map", "[final]",
         "-map", "[a_out]",
         "-r", str(VIDEO_FPS),
