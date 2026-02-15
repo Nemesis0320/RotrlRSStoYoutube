@@ -7,9 +7,8 @@ import os
 import subprocess
 import sys
 
-# Test configuration - use a KNOWN WORKING audio file
-TEST_AUDIO_URL = "https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav"
-TEST_AUDIO_FILE = "test_audio.wav"
+# Test configuration
+TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
 REMAP_FILE = "ellipse_remap.ppm"
 
@@ -39,11 +38,16 @@ def run_cmd(cmd):
     return True
 
 def download_test_audio():
+    """Download test audio file."""
     log("Downloading test audio...")
     if os.path.exists(TEST_AUDIO_FILE):
         log("Test audio already exists, skipping download")
         return True
-    return run_cmd(["wget", "-O", TEST_AUDIO_FILE, TEST_AUDIO_URL])
+    
+    # Download Dreamcast boot sound
+    TEST_URL = "https://downloads.khinsider.com/game-soundtracks/album/dreamcast-bios-1998-dreamcast-gamerip/01.%2520Bootup.mp3"
+    cmd = ["wget", "-O", TEST_AUDIO_FILE, TEST_URL]
+    return run_cmd(cmd)
 
 def generate_remap_table():
     log("Generating ellipse remap table...")
@@ -72,8 +76,7 @@ def render_elliptical_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # CORRECTED: Build filter complex for elliptical waveform
-    # The remap filter takes TWO inputs: [video_input][coordinate_map]remap
+    # Build filter complex for elliptical waveform
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
         [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_linear];
