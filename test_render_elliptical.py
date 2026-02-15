@@ -86,11 +86,11 @@ def render_circular_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # Use your working production approach with circular mask
+    # FIXED: Split audio properly and use correct output label
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]asplit=2[a_main][a_clip];
-        [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
+        [1:a]asplit=3[a_out][a_inner][a_clip];
+        [a_inner]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
         [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
         [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
         [wave_inner]copy[polar_inner];
@@ -110,7 +110,7 @@ def render_circular_waveform():
         "-i", CIRCLE_MASK,
         "-filter_complex", filter_complex,
         "-map", "[final]",
-        "-map", "[a_main]",
+        "-map", "[a_out]",  # FIXED: Use a_out instead of a_main
         "-r", str(VIDEO_FPS),
         "-c:v", "libx264",
         "-preset", "veryfast",
