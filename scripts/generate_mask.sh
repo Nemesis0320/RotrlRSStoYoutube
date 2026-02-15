@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+echo ">>> RUNNING TRUE MASK GENERATOR v9 <<<"
+
 mkdir -p assets
 
 magick convert -size 1200x1200 xc:none \
