@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Standalone test script for circular waveform rendering.
+Standalone test script for waveform rendering with clipping detection.
 Tests the rendering pipeline without uploading to YouTube.
 """
 import os
@@ -18,7 +18,6 @@ VIDEO_CRF = 30
 AUDIO_BITRATE = "64k"
 BG_IMAGE = "assets/1200x1200bf.png"
 FONT_FILE = "assets/IMFellEnglishSC.ttf"
-CIRCLE_MASK = "assets/circle_mask_720.png"
 
 def log(msg):
     print(f"[test] {msg}", flush=True)
@@ -62,8 +61,8 @@ def download_test_audio():
     cmd = ["wget", "-O", TEST_AUDIO_FILE, TEST_URL]
     return run_cmd(cmd)
 
-def render_circular_waveform():
-    log("Rendering with simple linear waveform overlay...")
+def render_waveform():
+    log("Rendering waveform with clipping detection...")
     
     duration = get_audio_duration(TEST_AUDIO_FILE)
     log(f"Audio duration: {duration:.2f} seconds")
@@ -86,12 +85,14 @@ def render_circular_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # Simple, clean, WORKS
+    # Gold waveform + red clipping indicator
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]asplit[a_out][a_wave];
-        [a_wave]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold@0.6:scale=lin[wave];
-        [bg][wave]overlay=0:0[bg_wave];
+        [1:a]asplit=2[a_out][a_wave];
+        [a_wave]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_gold];
+        [a_wave]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin:draw=scale[wave_red];
+        [wave_gold][wave_red]blend=all_expr='if(gt(A,0.9*255),B,A)'[wave_combined];
+        [bg][wave_combined]overlay=0:0:format=auto[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -117,13 +118,13 @@ def render_circular_waveform():
     return run_cmd(cmd, capture=False)
 
 def main():
-    log("Starting circular waveform test")
+    log("Starting waveform render test")
     
     if not download_test_audio():
         log("Failed to download test audio")
         sys.exit(1)
     
-    if not render_circular_waveform():
+    if not render_waveform():
         log("Failed to render video")
         sys.exit(1)
     
