@@ -29,6 +29,10 @@ jobs:
           curl -L -o assets/test_audio.mp3 \
             "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
 
+      - name: Generate remap image
+        run: python3 scripts/generate_ellipse_remap.py
+
+
       - name: Generate linear waveform video
         run: |
           ffmpeg -y -i assets/test_audio.mp3 \
