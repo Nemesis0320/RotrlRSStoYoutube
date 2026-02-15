@@ -1,0 +1,100 @@
+name: Produce Podcast Video
+
+on:
+  workflow_dispatch:
+
+jobs:
+  produce-podcast-video:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg and Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install pillow numpy
+
+      - name: Ensure input audio exists
+        run: |
+          if [ ! -f assets/input_audio.mp3 ]; then
+            echo "Place your audio at assets/input_audio.mp3 before running."
+            exit 1
+          fi
+
+      - name: Generate remap image
+        run: python3 scripts/generate_ellipse_remap.py
+
+      - name: Generate linear waveform (raw, 12 FPS)
+        run: |
+          ffmpeg -y -i assets/input_audio.mp3 \
+            -filter_complex "[0:a]showwaves=s=1200x5:mode=p2p:colors=white:scale=lin*8:rate=12,format=gray[wave]" \
+            -map "[wave]" -c:v rawvideo -pix_fmt gray wave_linear.yuv
+
+      - name: Detect clipping ranges
+        run: |
+          python3 scripts/detect_clipping_ranges.py assets/input_audio.mp3 -1.0 > clip_ranges.csv || true
+          cat clip_ranges.csv || echo "no clipping ranges"
+
+      - name: Build filter_complex file
+        run: |
+          echo "import os" > build_fc.py
+          echo "" >> build_fc.py
+          echo "base = r\"\"\"" >> build_fc.py
+          echo "[0:v]format=gray,format=rgba,colorchannelmixer=1:1:1:0[wave_rgba];" >> build_fc.py
+          echo "[wave_rgba][1:v]remap[warped];" >> build_fc.py
+          echo "[warped]split[gold][red];" >> build_fc.py
+          echo "[gold]format=rgba,colorchannelmixer=1:0.84:0:0[goldc];" >> build_fc.py
+          echo "[red]format=rgba,colorchannelmixer=1:0:0:0[redc];" >> build_fc.py
+          echo "[2:v][goldc]overlay=0:0[tmp]" >> build_fc.py
+          echo "\"\"\"" >> build_fc.py
+          echo "" >> build_fc.py
+          echo "ranges = []" >> build_fc.py
+          echo "if os.path.exists('clip_ranges.csv'):" >> build_fc.py
+          echo "    with open('clip_ranges.csv') as f:" >> build_fc.py
+          echo "        for line in f:" >> build_fc.py
+          echo "            line = line.strip()" >> build_fc.py
+          echo "            if not line: continue" >> build_fc.py
+          echo "            s, e = line.split(',')" >> build_fc.py
+          echo "            ranges.append((s, e))" >> build_fc.py
+          echo "" >> build_fc.py
+          echo "fc = base" >> build_fc.py
+          echo "if ranges:" >> build_fc.py
+          echo "    for idx, (s, e) in enumerate(ranges[:8]):" >> build_fc.py
+          echo "        tag_in = 'tmp' if idx == 0 else f'tmp{idx}'" >> build_fc.py
+          echo "        tag_out = f'tmp{idx+1}'" >> build_fc.py
+          echo "        fc += f\";\\n[{tag_in}][redc]overlay=0:0:enable='between(t,{s},{e})'[{tag_out}]\"" >> build_fc.py
+          echo "    final = f'[tmp{min(len(ranges),8)}]null[outv]'" >> build_fc.py
+          echo "else:" >> build_fc.py
+          echo "    final = '[tmp]null[outv]'" >> build_fc.py
+          echo "" >> build_fc.py
+          echo "fc = fc + ';\\n' + final + '\\n'" >> build_fc.py
+          echo "" >> build_fc.py
+          echo "with open('filter_complex.txt', 'w') as f:" >> build_fc.py
+          echo "    f.write(fc)" >> build_fc.py
+          echo "" >> build_fc.py
+
+          python3 build_fc.py
+          echo "----- filter_complex -----"
+          cat filter_complex.txt
+          echo "--------------------------"
+
+      - name: Warp, color, overlay, encode H.264 MP4
+        run: |
+          ffmpeg -y \
+            -f rawvideo -pix_fmt gray -s 1200x5 -r 12 -i wave_linear.yuv \
+            -loop 1 -i ellipse_remap.ppm \
+            -loop 1 -i assets/1200x1200bf.webp \
+            -filter_complex "$(cat filter_complex.txt)" \
+            -map "[outv]" -map 0:a? \
+            -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p \
+            -c:a aac -b:a 192k \
+            -shortest OUTPUT_PODCAST_VIDEO.mp4
+
+      - name: Upload podcast video
+        uses: actions/upload-artifact@v4
+        with:
+          name: podcast-video
+          path: OUTPUT_PODCAST_VIDEO.mp4
