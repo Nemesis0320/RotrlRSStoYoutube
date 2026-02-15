@@ -10,7 +10,8 @@ import sys
 # Test configuration
 TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
-REMAP_FILE = "ellipse_remap.ppm"
+REMAP_X_FILE = "ellipse_remap_x.pgm"
+REMAP_Y_FILE = "ellipse_remap_y.pgm"
 
 # Video settings (matching uploader.py)
 VIDEO_SIZE = "720x720"
@@ -27,15 +28,19 @@ WAVEFORM_HEIGHT = 40
 def log(msg):
     print(f"[test] {msg}", flush=True)
 
-def run_cmd(cmd):
+def run_cmd(cmd, capture=True):
     log(f"RUN: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        log(f"ERROR: {result.stderr}")
-        return False
-    if result.stdout:
-        log(f"OUTPUT: {result.stdout}")
-    return True
+    if capture:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            log(f"ERROR: {result.stderr}")
+            return False
+        if result.stdout:
+            log(f"OUTPUT: {result.stdout}")
+        return True
+    else:
+        result = subprocess.run(cmd)
+        return result.returncode == 0
 
 def generate_test_audio():
     """Generate a test audio file with FFmpeg."""
@@ -56,7 +61,7 @@ def generate_test_audio():
     return run_cmd(cmd)
 
 def generate_remap_table():
-    log("Generating ellipse remap table...")
+    log("Generating ellipse remap tables...")
     return run_cmd(["python3", "generate_ellipse_remap.py"])
 
 def render_elliptical_waveform():
@@ -82,11 +87,14 @@ def render_elliptical_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # WORKING BASELINE — NO REMAP, NO INPUT #2
+    # CORRECTED FILTERGRAPH WITH PROPER REMAP USAGE
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]showwaves=s={VIDEO_SIZE}:mode=cline:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
-        [bg][wave]overlay=0:0[bg_wave];
+        [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_linear];
+        [wave_linear]format=gray[wave_gray];
+        [wave_gray][2:v][3:v]remap[wave_warped];
+        [wave_warped]format=rgba,colorchannelmixer=aa=1[wave_rgba];
+        [bg][wave_rgba]overlay=0:0[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -94,8 +102,10 @@ def render_elliptical_waveform():
     
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1", "-i", BG_IMAGE,      # input 0
-        "-i", TEST_AUDIO_FILE,             # input 1
+        "-loop", "1", "-i", BG_IMAGE,      # input 0: background
+        "-i", TEST_AUDIO_FILE,             # input 1: audio
+        "-loop", "1", "-i", REMAP_X_FILE,  # input 2: X coordinates
+        "-loop", "1", "-i", REMAP_Y_FILE,  # input 3: Y coordinates
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "1:a",
@@ -110,7 +120,7 @@ def render_elliptical_waveform():
         OUTPUT_VIDEO
     ]
     
-    return run_cmd(cmd)
+    return run_cmd(cmd, capture=False)  # Show full FFmpeg output for debugging
 
 def main():
     log("Starting elliptical waveform test")
@@ -120,9 +130,9 @@ def main():
         log("Failed to generate test audio")
         sys.exit(1)
     
-    # Step 2: Generate remap table
+    # Step 2: Generate remap tables
     if not generate_remap_table():
-        log("Failed to generate remap table")
+        log("Failed to generate remap tables")
         sys.exit(1)
     
     # Step 3: Render video
