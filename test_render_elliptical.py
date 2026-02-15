@@ -33,7 +33,6 @@ def run_cmd(cmd, capture=True):
             log(f"OUTPUT: {result.stdout}")
         return True
     else:
-        # Don't capture - show output directly
         result = subprocess.run(cmd)
         return result.returncode == 0
 
@@ -63,7 +62,7 @@ def download_test_audio():
     return run_cmd(cmd)
 
 def render_circular_waveform():
-    log("Rendering circular waveform...")
+    log("Rendering circular waveform with p2p mode...")
     
     duration = get_audio_duration(TEST_AUDIO_FILE)
     log(f"Audio duration: {duration:.2f} seconds")
@@ -87,11 +86,11 @@ def render_circular_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # Clean, reliable circular waveform
+    # UPDATED: mode=p2p creates a smooth circular ring (point-to-point)
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
         [1:a]asplit[a_out][a_wave];
-        [a_wave]showwaves=s={VIDEO_SIZE}:mode=cline:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
+        [a_wave]showwaves=s={VIDEO_SIZE}:mode=p2p:rate={VIDEO_FPS}:colors=gold:scale=sqrt:draw=scale[wave];
         [bg][wave]overlay=0:0[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
