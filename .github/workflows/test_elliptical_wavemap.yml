@@ -39,7 +39,7 @@ jobs:
         run: |
           ffmpeg -y \
             -i wave_linear.mp4 \
-            -loop 1 -i ellipse_remap.png \
+            -loop 1 -i ellipse_remap.ppm \
             -loop 1 -i assets/1200x1200bf.webp \
             -filter_complex "\
 [0:v][1:v]remap[warped]; \
