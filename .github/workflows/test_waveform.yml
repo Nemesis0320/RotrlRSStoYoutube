@@ -42,7 +42,7 @@ jobs:
 
       - name: Generate linear waveform
         run: |
-          ffmpeg -i input.mp3 \
+          ffmpeg -i assets/test_audio.mp3 \
             -filter_complex "showwaves=s=1200x80:mode=p2p:colors=white:scale=lin*8" \
             -frames:v 1 wave_linear.png
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Composite emblem + circular waveform
         run: |
-          ffmpeg -i emblem.png -i wave_circle.png \
+          ffmpeg -i assets/1200x1200bf.webp -i wave_circle.png \
             -filter_complex "[0][1]overlay=0:0" \
             output_test.mp4
 
