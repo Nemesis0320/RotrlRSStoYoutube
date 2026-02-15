@@ -1,7 +1,5 @@
-[0:v]scale=1200:1200,setsar=1[bg];
-[1:a]showwaves=s=1200x300:mode=p2p:colors=white:scale=sqrt[wave_raw];
-[wave_raw]boxblur=2:0[wave_smooth];
-[wave_smooth]pad=1200:1200:0:405,format=rgba[wave_padded];
-[wave_padded]geq=lum='between(sqrt((X-600)*(X-600)+(Y-555)*(Y-555)),241+1.5*((lum(((-atan2(Y-555,X-600)+PI)/(2*PI))*(W-1),555,1)-128)/128)-2,241+1.5*((lum(((-atan2(Y-555,X-600)+PI)/(2*PI))*(W-1),555,1)-128)/128)+2)*255'[ring_raw];
-[ring_raw]gblur=sigma=8[ring_glow];
-[bg][ring_glow]overlay=0:0[outv]
+[1:a]showwaves=s=1200x80:mode=line:colors=white:scale=lin*8[wave_linear];
+[wave_linear]pad=1200:1200:0:(1200-80)/2[wave_padded];
+[wave_padded]v360=input=rectilinear:output=polar:ih_fov=360:iv_fov=180[wave_polar];
+[wave_polar]scale=1200:1200[wave_circle];
+[bg][wave_circle]overlay=0:0[outv]
