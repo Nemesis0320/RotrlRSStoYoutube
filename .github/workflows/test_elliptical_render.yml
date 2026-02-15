@@ -2,7 +2,7 @@ name: Test Circular Waveform
 on:
   push:
     branches:
-      - elliptical-waveform-v3
+      - elliptical-waveform-v4
   workflow_dispatch:
 
 jobs:
@@ -21,6 +21,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pillow
+
+      - name: Generate circular remap
+        run: python3 generate_circle_remap.py
           
       - name: Run test render script
         run: python3 test_render_elliptical.py
