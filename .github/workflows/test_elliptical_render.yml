@@ -1,4 +1,4 @@
-name: Test Elliptical Render
+name: Test Circular Waveform
 on:
   push:
     branches:
@@ -22,9 +22,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           
-      - name: Install Python dependencies
-        run: pip install numpy pillow
-          
       - name: Run test render script
         run: python3 test_render_elliptical.py
         
@@ -32,14 +29,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-elliptical-video
+          name: test-circular-waveform
           path: test_output.mp4
-          
-      - name: Upload remap tables (for debugging)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: remap-tables
-          path: |
-            ellipse_remap_x.pgm
-            ellipse_remap_y.pgm
