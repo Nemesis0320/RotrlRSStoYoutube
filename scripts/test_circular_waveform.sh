@@ -15,13 +15,13 @@ echo "Running FFmpeg circular masked waveform test..."
 ffmpeg -y \
   -loop 1 -i assets/1200x1200bf.webp \
   -i assets/test_audio.mp3 \
-  -i assets/circle_mask_720.png \
+  -i assets/circle_mask_1200.png \
   -filter_complex "\
 [0:v]scale=1200:1200,setsar=1[bg]; \
 [1:a]showwaves=s=1200x300:mode=line:colors=white:scale=lin*8[wave_raw]; \
 [wave_raw]scale=1200:1200:flags=neighbor[wave_thick]; \
 [wave_thick]gblur=sigma=12[wave_glow]; \
-[2:v]scale=1200:1200:format=gray[mask]; \
+[2:v]scale=1200:1200[mask]; \
 [wave_glow][mask]alphamerge[wave_circle]; \
 [bg][wave_circle]overlay=0:0[outv]" \
   -map "[outv]" -map 1:a \
