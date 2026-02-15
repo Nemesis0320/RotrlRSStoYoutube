@@ -29,7 +29,4 @@ ffmpeg -y \
   -c:a aac -b:a 192k \
   -shortest output_test.mp4
 
-echo "Cleaning up test audio..."
-rm -f assets/test_audio.mp3
-
 echo "Done! Output written to output_test.mp4"
