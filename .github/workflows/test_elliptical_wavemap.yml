@@ -1,0 +1,54 @@
+name: Test Elliptical Remap
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-ellipse-remap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install pillow numpy
+
+      - name: Generate remap image
+        run: |
+          python3 scripts/generate_ellipse_remap.py
+
+      - name: Download test audio
+        run: |
+          mkdir -p assets
+          curl -L -o assets/test_audio.mp3 \
+            "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
+
+      - name: Generate linear waveform video
+        run: |
+          ffmpeg -y -i assets/test_audio.mp3 \
+            -filter_complex "showwaves=s=1200x5:mode=p2p:colors=white:scale=lin*8,format=gray" \
+            -r 30 -pix_fmt yuv420p wave_linear.mp4
+
+      - name: Warp waveform with remap and overlay on emblem
+        run: |
+          ffmpeg -y \
+            -i wave_linear.mp4 \
+            -loop 1 -i ellipse_remap.png \
+            -loop 1 -i assets/1200x1200bf.webp \
+            -filter_complex "\
+[0:v][1:v]remap[warped]; \
+[2:v][warped]overlay=0:0" \
+            -c:v libx264 -preset ultrafast -crf 18 \
+            -c:a aac -shortest output_test.mp4
+
+      - name: Upload test video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliptical-remap-test-output
+          path: output_test.mp4
