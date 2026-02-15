@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """
-Generate elliptical remap table for FFmpeg's remap filter.
-Maps a linear waveform to an elliptical ring around the emblem.
+Generate elliptical remap tables for FFmpeg's remap filter.
+Outputs TWO grayscale images: one for X coordinates, one for Y coordinates.
 """
 import numpy as np
 from PIL import Image
 
-# Canvas size (720x720 to match video)
+# Canvas size
 WIDTH = 720
 HEIGHT = 720
 
-# Ellipse geometry (from your measurements)
+# Ellipse geometry
 CENTER_X = 360
 CENTER_Y = 360
-RX_OUTER = 300  # Horizontal radius of outer ellipse
-RY_OUTER = 240  # Vertical radius of outer ellipse
-RX_INNER = 260  # Horizontal radius of inner ellipse
-RY_INNER = 200  # Vertical radius of inner ellipse
+RX_OUTER = 300
+RY_OUTER = 240
+RX_INNER = 260
+RY_INNER = 200
 
-# Source waveform dimensions (from showwaves)
+# Source waveform dimensions
 WAVEFORM_WIDTH = 720
-WAVEFORM_HEIGHT = 40  # Height of the waveform strip
+WAVEFORM_HEIGHT = 40
 
 def generate_ellipse_remap():
-    """Generate the remap table for elliptical waveform transformation."""
+    """Generate X and Y remap tables for elliptical waveform transformation."""
     
     # Create coordinate grids
     y, x = np.indices((HEIGHT, WIDTH), dtype=np.float32)
@@ -48,33 +48,34 @@ def generate_ellipse_remap():
     # Create mask for pixels within the elliptical ring
     mask = (r >= r_inner) & (r <= r_outer)
     
-    # Map angle to horizontal position in source waveform (0 to WAVEFORM_WIDTH)
-    # Normalize theta from [-π, π] to [0, 1]
+    # Map angle to horizontal position in source waveform (0 to WAVEFORM_WIDTH-1)
     theta_normalized = (theta + np.pi) / (2.0 * np.pi)
     source_x = theta_normalized * (WAVEFORM_WIDTH - 1)
     
-    # Map radius to vertical position in source waveform (0 to WAVEFORM_HEIGHT)
-    # t = 0 at inner ellipse, t = 1 at outer ellipse
+    # Map radius to vertical position in source waveform (0 to WAVEFORM_HEIGHT-1)
     t = (r - r_inner) / (r_outer - r_inner)
     t = np.clip(t, 0.0, 1.0)
     source_y = t * (WAVEFORM_HEIGHT - 1)
     
-    # Normalize coordinates to 0..255 for FFmpeg remap
-    # FFmpeg interprets remap values as normalized 0..1 coordinates
-    map_x = (source_x / (WAVEFORM_WIDTH - 1) * 255.0).astype(np.uint8)
-    map_y = (source_y / (WAVEFORM_HEIGHT - 1) * 255.0).astype(np.uint8)
+    # FFmpeg remap expects coordinates as pixel values (0..width-1, 0..height-1)
+    # scaled to 0..65535 (16-bit) or 0..255 (8-bit) depending on format
+    # We'll use 16-bit for better precision
+    map_x = np.clip(source_x, 0, WAVEFORM_WIDTH - 1).astype(np.float32)
+    map_y = np.clip(source_y, 0, WAVEFORM_HEIGHT - 1).astype(np.float32)
     
-    # Pixels outside the elliptical ring map to (0, 0) - black
-    map_x[~mask] = 0
-    map_y[~mask] = 0
+    # Scale to 0..65535 for 16-bit gray
+    map_x_scaled = (map_x / (WAVEFORM_WIDTH - 1) * 65535).astype(np.uint16)
+    map_y_scaled = (map_y / (WAVEFORM_HEIGHT - 1) * 65535).astype(np.uint16)
     
-    # Create RGB image (R=x coordinate, G=y coordinate, B=unused)
-    map_b = np.zeros_like(map_x, dtype=np.uint8)
-    remap_image = np.stack([map_x, map_y, map_b], axis=-1)
+    # Set pixels outside ring to 0 (will sample from 0,0 - black)
+    map_x_scaled[~mask] = 0
+    map_y_scaled[~mask] = 0
     
-    # Save as PPM (raw format that FFmpeg can read efficiently)
-    Image.fromarray(remap_image, mode="RGB").save("ellipse_remap.ppm")
-    print(f"Generated ellipse_remap.ppm ({WIDTH}x{HEIGHT})")
+    # Save as 16-bit grayscale PGM
+    Image.fromarray(map_x_scaled, mode="I;16").save("ellipse_remap_x.pgm")
+    Image.fromarray(map_y_scaled, mode="I;16").save("ellipse_remap_y.pgm")
+    
+    print(f"Generated ellipse_remap_x.pgm and ellipse_remap_y.pgm ({WIDTH}x{HEIGHT})")
 
 if __name__ == "__main__":
     generate_ellipse_remap()
