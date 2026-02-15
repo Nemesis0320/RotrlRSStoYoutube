@@ -8,9 +8,10 @@ import subprocess
 import sys
 
 # Test configuration
-TEST_AUDIO_URL = "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
+TEST_AUDIO_URL = "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723929.mp3"
 TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
+REMAP_FILE = "ellipse_remap.ppm"
 
 # Video settings (matching uploader.py)
 VIDEO_SIZE = "720x720"
@@ -20,13 +21,9 @@ AUDIO_BITRATE = "64k"
 BG_IMAGE = "assets/1200x1200bf.png"
 FONT_FILE = "assets/IMFellEnglishSC.ttf"
 
-# Ellipse geometry (from your measurements)
-CENTER_X = 360
-CENTER_Y = 360
-RX_OUTER = 300
-RY_OUTER = 240
-RX_INNER = 260
-RY_INNER = 200
+# Waveform source dimensions
+WAVEFORM_WIDTH = 720
+WAVEFORM_HEIGHT = 40
 
 def log(msg):
     print(f"[test] {msg}", flush=True)
@@ -37,6 +34,8 @@ def run_cmd(cmd):
     if result.returncode != 0:
         log(f"ERROR: {result.stderr}")
         return False
+    if result.stdout:
+        log(f"OUTPUT: {result.stdout}")
     return True
 
 def download_test_audio():
@@ -46,31 +45,49 @@ def download_test_audio():
         return True
     return run_cmd(["wget", "-O", TEST_AUDIO_FILE, TEST_AUDIO_URL])
 
+def generate_remap_table():
+    log("Generating ellipse remap table...")
+    return run_cmd(["python3", "generate_ellipse_remap.py"])
+
 def render_elliptical_waveform():
     log("Rendering elliptical waveform...")
     
     # Test metadata
-    episode_title = "Test Episode"
+    episode_title = "Test File"
     season_label = "Season 1"
     episode_number = "0"
-    season_ep_label = f"{season_label} EP {episode_number}"
-    ticker_text = f"{season_ep_label}: {episode_title}"
+    ticker_text = f"{season_label} EP {episode_number}: {episode_title}"
     
-    # Build FFmpeg command
-    # This is a placeholder - we'll build the actual elliptical rendering logic here
+    # Escape special characters for FFmpeg drawtext
+    def ffmpeg_escape(text):
+        return (
+            text
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace(":", "\\:")
+            .replace(",", "\\,")
+        )
+    
+    safe_episode_title = ffmpeg_escape(episode_title)
+    safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
+    safe_ticker = ffmpeg_escape(ticker_text)
+    
+    # Build filter complex for elliptical waveform
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
-        [bg][wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
-        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{ticker_text}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
+        [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_linear];
+        [wave_linear][2:v]remap[wave_warped];
+        [bg][wave_warped]overlay=0:0[bg_wave];
+        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
+        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
     """.replace("\n", " ")
     
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1", "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
+        "-i", REMAP_FILE,
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "1:a",
@@ -95,12 +112,17 @@ def main():
         log("Failed to download test audio")
         sys.exit(1)
     
-    # Step 2: Render video
+    # Step 2: Generate remap table
+    if not generate_remap_table():
+        log("Failed to generate remap table")
+        sys.exit(1)
+    
+    # Step 3: Render video
     if not render_elliptical_waveform():
         log("Failed to render video")
         sys.exit(1)
     
-    # Step 3: Check output
+    # Step 4: Check output
     if os.path.exists(OUTPUT_VIDEO):
         size = os.path.getsize(OUTPUT_VIDEO)
         log(f"SUCCESS: Video created ({size} bytes)")
@@ -111,4 +133,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
