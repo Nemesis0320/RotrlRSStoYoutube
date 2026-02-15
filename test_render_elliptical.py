@@ -86,10 +86,20 @@ def render_elliptical_waveform():
     # This validates the pipeline before implementing the elliptical transform
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]showwaves=s={VIDEO_SIZE}:mode=cline:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
-        [bg][wave]overlay=0:0[bg_wave];
+
+        [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=p2p:colors=white:scale=lin*8:rate={VIDEO_FPS}[wave];
+        [wave]format=gray,format=rgba,colorchannelmixer=1:1:1:0[wave_rgba];
+
+        [wave_rgba][2:v]remap[warped];
+
+        [warped]format=rgba,colorchannelmixer=1:0.84:0:0[goldc];
+
+        [bg][goldc]overlay=0:0[bg_wave];
+
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
+
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
+
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
     """.replace("\n", " ")
     
