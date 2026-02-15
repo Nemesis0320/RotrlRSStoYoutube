@@ -8,7 +8,6 @@ on:
 jobs:
   test-render:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -35,3 +34,12 @@ jobs:
         with:
           name: test-elliptical-video
           path: test_output.mp4
+          
+      - name: Upload remap tables (for debugging)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remap-tables
+          path: |
+            ellipse_remap_x.pgm
+            ellipse_remap_y.pgm
