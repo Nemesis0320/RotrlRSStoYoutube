@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Standalone test script for elliptical waveform rendering.
+Standalone test script for circular waveform rendering.
 Tests the rendering pipeline without uploading to YouTube.
 """
 import os
@@ -10,8 +10,6 @@ import sys
 # Test configuration
 TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
-REMAP_X_FILE = "ellipse_remap_x.pgm"
-REMAP_Y_FILE = "ellipse_remap_y.pgm"
 
 # Video settings (matching uploader.py)
 VIDEO_SIZE = "720x720"
@@ -20,10 +18,6 @@ VIDEO_CRF = 30
 AUDIO_BITRATE = "64k"
 BG_IMAGE = "assets/1200x1200bf.png"
 FONT_FILE = "assets/IMFellEnglishSC.ttf"
-
-# Waveform source dimensions
-WAVEFORM_WIDTH = 720
-WAVEFORM_HEIGHT = 40
 
 def log(msg):
     print(f"[test] {msg}", flush=True)
@@ -63,19 +57,13 @@ def download_test_audio():
         log("Test audio already exists, skipping download")
         return True
     
-    # Use real audio file
     TEST_URL = "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
     cmd = ["wget", "-O", TEST_AUDIO_FILE, TEST_URL]
     return run_cmd(cmd)
 
-def generate_remap_table():
-    log("Generating ellipse remap tables...")
-    return run_cmd(["python3", "generate_ellipse_remap.py"])
-
-def render_elliptical_waveform():
-    log("Rendering elliptical waveform...")
+def render_circular_waveform():
+    log("Rendering circular waveform...")
     
-    # Get audio duration to control video length
     duration = get_audio_duration(TEST_AUDIO_FILE)
     log(f"Audio duration: {duration:.2f} seconds")
     
@@ -85,7 +73,6 @@ def render_elliptical_waveform():
     episode_number = "0"
     ticker_text = f"{season_label} EP {episode_number}: {episode_title}"
     
-    # Escape special characters for FFmpeg drawtext
     def ffmpeg_escape(text):
         return (
             text
@@ -99,13 +86,12 @@ def render_elliptical_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # FIXED: Use explicit duration control instead of -shortest
+    # Clean, reliable circular waveform
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
         [1:a]asplit[a_out][a_wave];
-        [a_wave]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin,format=gray[wave_gray];
-        [wave_gray][2:v][3:v]remap,format=rgba,colorchannelmixer=aa=1[wave_rgba];
-        [bg][wave_rgba]overlay=0:0[bg_wave];
+        [a_wave]showwaves=s={VIDEO_SIZE}:mode=cline:rate={VIDEO_FPS}:colors=gold:scale=lin[wave];
+        [bg][wave]overlay=0:0[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -113,10 +99,8 @@ def render_elliptical_waveform():
     
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1", "-t", str(duration), "-i", BG_IMAGE,      # input 0: background (explicit duration)
-        "-i", TEST_AUDIO_FILE,                                   # input 1: audio
-        "-loop", "1", "-t", str(duration), "-i", REMAP_X_FILE,  # input 2: X coordinates (explicit duration)
-        "-loop", "1", "-t", str(duration), "-i", REMAP_Y_FILE,  # input 3: Y coordinates (explicit duration)
+        "-loop", "1", "-t", str(duration), "-i", BG_IMAGE,
+        "-i", TEST_AUDIO_FILE,
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "[a_out]",
@@ -130,27 +114,19 @@ def render_elliptical_waveform():
         OUTPUT_VIDEO
     ]
     
-    return run_cmd(cmd, capture=False)  # Show full FFmpeg output for debugging
+    return run_cmd(cmd, capture=False)
 
 def main():
-    log("Starting elliptical waveform test")
+    log("Starting circular waveform test")
     
-    # Step 1: Download test audio
     if not download_test_audio():
         log("Failed to download test audio")
         sys.exit(1)
     
-    # Step 2: Generate remap tables
-    if not generate_remap_table():
-        log("Failed to generate remap tables")
-        sys.exit(1)
-    
-    # Step 3: Render video
-    if not render_elliptical_waveform():
+    if not render_circular_waveform():
         log("Failed to render video")
         sys.exit(1)
     
-    # Step 4: Check output
     if os.path.exists(OUTPUT_VIDEO):
         size = os.path.getsize(OUTPUT_VIDEO)
         log(f"SUCCESS: Video created ({size} bytes)")
