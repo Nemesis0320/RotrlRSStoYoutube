@@ -29,6 +29,9 @@ jobs:
       - name: Make test script executable
         run: chmod +x scripts/test_circular_waveform.sh
 
+      - name: Generate elliptical mask
+        run: bash scripts/generate_mask.sh
+
       - name: Run waveform test
         run: ./scripts/test_circular_waveform.sh
 
