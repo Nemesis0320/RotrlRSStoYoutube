@@ -73,11 +73,15 @@ def render_elliptical_waveform():
     safe_ticker = ffmpeg_escape(ticker_text)
     
     # Build filter complex for elliptical waveform
+    # The remap filter needs TWO inputs: [source][coordinates]remap
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
         [1:a]showwaves=s={WAVEFORM_WIDTH}x{WAVEFORM_HEIGHT}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_linear];
-        [wave_linear][2:v]remap[wave_warped];
-        [bg][wave_warped]overlay=0:0[bg_wave];
+        [wave_linear]format=gray[wave_gray];
+        [2:v]format=rgb24[remap_coords];
+        [wave_gray][remap_coords]remap=format=gray[wave_warped];
+        [wave_warped]format=rgba,colorchannelmixer=aa=1[wave_alpha];
+        [bg][wave_alpha]overlay=0:0:format=auto[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
         [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
         [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker}':x=w-mod(t*120\\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final]
@@ -87,7 +91,7 @@ def render_elliptical_waveform():
         "ffmpeg", "-y",
         "-loop", "1", "-i", BG_IMAGE,
         "-i", TEST_AUDIO_FILE,
-        "-i", REMAP_FILE,
+        "-loop", "1", "-i", REMAP_FILE,
         "-filter_complex", filter_complex,
         "-map", "[final]",
         "-map", "1:a",
@@ -103,7 +107,6 @@ def render_elliptical_waveform():
     ]
     
     return run_cmd(cmd)
-
 def main():
     log("Starting elliptical waveform test")
     
