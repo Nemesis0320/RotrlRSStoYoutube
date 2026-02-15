@@ -1,9 +1,9 @@
 name: Test Elliptical Render
 on:
-     push:
-       branches:
-         - elliptical-waveform-v2
-     workflow_dispatch:
+  push:
+    branches:
+      - elliptical-waveform-v2
+  workflow_dispatch:
 
 jobs:
   test-render:
@@ -21,6 +21,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+          
+      - name: Install Python dependencies
+        run: pip install numpy pillow
           
       - name: Run test render script
         run: python3 test_render_elliptical.py
