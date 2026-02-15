@@ -52,4 +52,4 @@ map_g[~mask] = 0
 map_b = np.zeros_like(map_r, dtype=np.uint8)
 
 remap_img = np.stack([map_r, map_g, map_b], axis=-1)
-Image.fromarray(remap_img, mode="RGB").save("ellipse_remap.png")
+Image.fromarray(remap_img, mode="RGB").save("ellipse_remap.ppm")
