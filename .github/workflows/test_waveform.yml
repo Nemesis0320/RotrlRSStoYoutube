@@ -56,7 +56,7 @@ jobs:
 
       - name: Composite emblem + circular waveform
         run: |
-          ffmpeg -i assets/1200x1200bf.webp -i wave_circle.png \
+          ffmpeg -y -i assets/1200x1200bf.webp -i wave_circle.png \
             -filter_complex "[0][1]overlay=0:0" \
             output_test.mp4
 
