@@ -25,6 +25,11 @@ jobs:
       - name: Install Python dependencies
         run: pip install pillow numpy
 
+      - name: Download test audio
+        run: |
+          curl -L -o assets/test_audio.mp3 \
+            "https://quicksounds.com/uploads/tracks/528054973_948104858_1761723949.mp3"
+
       - name: Generate linear waveform
         run: |
           ffmpeg -y -i assets/test_audio.mp3 \
