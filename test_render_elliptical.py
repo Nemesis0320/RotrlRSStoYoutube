@@ -85,12 +85,12 @@ def render_waveform():
     safe_season_ep = ffmpeg_escape(f"{season_label} EP {episode_number}")
     safe_ticker = ffmpeg_escape(ticker_text)
     
-    # Gold waveform + red clipping indicator
+    # FIXED: Split audio into 3 streams (output + 2 for waveforms)
     filter_complex = f"""
         [0:v]scale={VIDEO_SIZE}[bg];
-        [1:a]asplit=2[a_out][a_wave];
-        [a_wave]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_gold];
-        [a_wave]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin:draw=scale[wave_red];
+        [1:a]asplit=3[a_out][a_wave_gold][a_wave_red];
+        [a_wave_gold]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_gold];
+        [a_wave_red]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin:draw=scale[wave_red];
         [wave_gold][wave_red]blend=all_expr='if(gt(A,0.9*255),B,A)'[wave_combined];
         [bg][wave_combined]overlay=0:0:format=auto[bg_wave];
         [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
