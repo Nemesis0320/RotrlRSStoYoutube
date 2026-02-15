@@ -40,11 +40,7 @@ jobs:
             -f rawvideo -pix_fmt gray -s 1200x5 -r 12 -i wave_linear.yuv \
             -loop 1 -i ellipse_remap.ppm \
             -loop 1 -i assets/1200x1200bf.webp \
-            -filter_complex "\
-[0:v]format=gray,format=rgba,colorchannelmixer=1:1:1:0[wave_rgba]; \
-[wave_rgba][1:v]remap[warped]; \
-[warped]format=rgba,colorchannelmixer=1:0.84:0:0[goldc]; \
-[2:v][goldc]overlay=0:0" \
+            -filter_complex "[0:v]format=gray,format=rgba,colorchannelmixer=1:1:1:0[wave_rgba];[wave_rgba][1:v]remap[warped];[warped]format=rgba,colorchannelmixer=1:0.84:0:0[goldc];[2:v][goldc]overlay=0:0" \
             -c:v mjpeg -q:v 3 -c:a aac -shortest output_test.avi
 
       - name: Upload test video artifact
