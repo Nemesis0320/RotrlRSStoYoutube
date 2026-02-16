@@ -21,6 +21,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+      
+      # NEW: Install Python dependencies
+      - name: Install Python dependencies
+        run: |
+          pip install numpy Pillow
           
       - name: Run test render script
         run: python3 test_render_elliptical.py
@@ -31,3 +36,4 @@ jobs:
         with:
           name: test-circular-waveform
           path: test_output.mp4
+          if-no-files-found: warn
