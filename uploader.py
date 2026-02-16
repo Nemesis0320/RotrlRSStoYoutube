@@ -367,101 +367,21 @@ FONT_FILE = "assets/IMFellEnglishSC.ttf"
 PODCAST_TITLE = "Clinton's Core Classics"
 
 def render_video(audio, output, episode_title=None, season_label=None, episode_number=None):
-    if episode_title is None:
-        episode_title = "Untitled Episode"
-    if season_label is None:
-        season_label = "Season"
-    log("RENDER VIDEO L3-CIRCULAR:", audio, "->", output)
+    """
+    Render video with elliptical waveform.
+    Now uses Python-based elliptical renderer instead of FFmpeg filters.
+    """
+    from render_elliptical_waveform import render_elliptical_waveform_video
+    
+    log("RENDER VIDEO ELLIPTICAL:", audio, "->", output)
+    return render_elliptical_waveform_video(
+        audio, 
+        output, 
+        episode_title=episode_title,
+        season_label=season_label,
+        episode_number=episode_number
+    )
 
-    # REMOVE APOSTROPHES (FFmpeg-safe)
-    episode_title = episode_title.replace("'", "")
-    season_label = season_label.replace("'", "")
-    # episode_number is numeric, safe
-
-    # Canonical labels
-    season_ep_label = f"{season_label} EP {episode_number}"
-    ticker_text = f"{season_ep_label}: {episode_title}"
-
-    # Escape characters for FFmpeg drawtext (double-quoted text="")
-    def ffmpeg_escape(text):
-        return (
-            text
-            .replace("\\", "\\\\")   # backslash
-            .replace('"', '\\"')     # double quote
-            .replace(":", "\\:")     # colon
-            .replace(",", "\\,")     # comma
-            .replace("[", "\\[")     # [
-            .replace("]", "\\]")     # ]
-            .replace("%", "\\%")     # %
-            .replace("(", "\\(")     # (
-            .replace(")", "\\)")     # )
-        )
-
-    safe_episode_title = ffmpeg_escape(episode_title)
-    safe_season_ep_label = ffmpeg_escape(season_ep_label)
-    safe_ticker_text = ffmpeg_escape(ticker_text)
-
-    filter_complex = f"""
-        [0:v]scale={VIDEO_SIZE}[bg];
-
-        [1:a]asplit=2[a_main][a_clip];
-
-        [a_main]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=gold:scale=lin[wave_inner];
-
-        [a_clip]showwaves=s={VIDEO_SIZE}:mode=line:rate={VIDEO_FPS}:colors=red:scale=lin[wave_clip_raw];
-        [wave_clip_raw][2:v]alphamerge[wave_clip_masked];
-
-        [wave_inner]copy[polar_inner];
-        [wave_clip_masked]copy[polar_clip];
-
-        [polar_inner][polar_clip]blend=all_mode=lighten:all_opacity=1.0[combined];
-
-        [combined][2:v]alphamerge[circ_wave];
-
-        [bg][circ_wave]overlay=(W-w)/2:(H-h)/2[bg_wave];
-
-        [bg_wave]drawtext=fontfile={FONT_FILE}:text='{safe_episode_title}':x=(w-text_w)/2:y=120:fontsize=40:fontcolor=gold:shadowx=2:shadowy=2[bg_titleline];
-
-        [bg_titleline]drawtext=fontfile={FONT_FILE}:text='{safe_season_ep_label}':x=(w-text_w)/2:y=180:fontsize=32:fontcolor=white:shadowx=2:shadowy=2[bg_ep];
-
-        [bg_ep]drawtext=fontfile={FONT_FILE}:text='{safe_ticker_text}':x=w-mod(t*120\,w+text_w):y=h-60:fontsize=26:fontcolor=white:shadowx=2:shadowy=2[final];
-
-        [final]fade=t=in:st=0:d=0.8[final_faded];
-    """.replace("\n", " ")
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loop", "1",
-        "-i", BG_IMAGE,
-        "-i", audio,
-        "-i", "assets/circle_mask_720.png",
-        "-filter_complex", filter_complex,
-        "-map", "[final_faded]",
-        "-map", "1:a",
-        "-r", str(VIDEO_FPS),
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-tune", "stillimage",
-        "-crf", str(VIDEO_CRF),
-        "-c:a", "aac",
-        "-b:a", AUDIO_BITRATE,
-        "-shortest",
-        output,
-    ]
-
-    out = run_cmd(cmd)
-    log("RENDER L3-CIRC OUT:", out)
-
-    if ("Error" in out or "Invalid" in out or "No such file" in out or "failed" in out.lower()):
-        log("RENDER L3-CIRC ERROR DETECTED:", out[:2000])
-        return False
-
-    exists = os.path.exists(output)
-    size = os.path.getsize(output) if exists else 0
-    log("RENDER L3-CIRC RESULT:", exists, "SIZE:", size)
-
-    return exists and size > 0
 
 def stitch_videos(v1, v2, out_path):
     cleanup_files(out_path)
