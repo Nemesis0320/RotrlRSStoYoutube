@@ -18,12 +18,14 @@ OUTPUT_VIDEO = "test_output.mp4"
 WIDTH = 720
 HEIGHT = 720
 
-# Background ring measurements (1200x1200) scaled to 720x720
+# Background ring measurements - ADJUSTED FOR BETTER FIT
 SCALE = 720.0 / 1200.0
 CENTER_X = int(600 * SCALE)  # 360
-CENTER_Y = int(555 * SCALE)  # 333 (NOT centered vertically!)
-OUTER_RADIUS = int(240 * SCALE)  # 144
-INNER_RADIUS = int(200 * SCALE)  # 120
+CENTER_Y = int(555 * SCALE)  # 333
+
+# Increased radii slightly to better match visual ring
+OUTER_RADIUS = int(260 * SCALE)  # 156 (was 144)
+INNER_RADIUS = int(200 * SCALE)  # 120 (same)
 
 FPS = 12
 
@@ -129,13 +131,15 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
     """
     Draw a single circular waveform frame with clipping detection.
     Gold for normal audio, red for clipping (amplitude > 0.9).
-    ALIGNED TO EXACT BACKGROUND RING COORDINATES.
     """
     img = Image.new('RGBA', (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     num_samples = len(amplitudes)
-    ring_thickness = OUTER_RADIUS - INNER_RADIUS  # 24px
+    ring_thickness = OUTER_RADIUS - INNER_RADIUS  # Base thickness
+    
+    # AMPLIFICATION FACTOR - make waveforms 3.5x bigger!
+    AMPLITUDE_MULTIPLIER = 3.5
     
     for i in range(num_samples):
         angle = (i / num_samples) * 2 * math.pi
@@ -147,8 +151,8 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
         else:
             color = (255, 215, 0, 255)  # Gold
         
-        # Scale amplitude to ring thickness
-        line_length = amplitude * ring_thickness
+        # Scale amplitude to ring thickness WITH MULTIPLIER
+        line_length = amplitude * ring_thickness * AMPLITUDE_MULTIPLIER
         
         # Inner circle (start of waveform at inner ring edge)
         x1 = CENTER_X + INNER_RADIUS * math.cos(angle)
@@ -159,8 +163,8 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
         x2 = CENTER_X + outer_r * math.cos(angle)
         y2 = CENTER_Y + outer_r * math.sin(angle)
         
-        # Draw radial line
-        draw.line([(x1, y1), (x2, y2)], fill=color, width=3)
+        # Draw radial line (thicker line for better visibility)
+        draw.line([(x1, y1), (x2, y2)], fill=color, width=4)
     
     img.save(output_path)
 
