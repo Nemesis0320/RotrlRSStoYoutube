@@ -23,11 +23,11 @@ SCALE = 720.0 / 1200.0
 CENTER_X = int(600 * SCALE)  # 360
 CENTER_Y = int(555 * SCALE)  # 333
 
-# Ellipse radii - different for X and Y axes
-OUTER_RADIUS_X = int(300 * SCALE)  # 180 (horizontal - wider)
-OUTER_RADIUS_Y = int(240 * SCALE)  # 144 (vertical - shorter)
-INNER_RADIUS_X = int(260 * SCALE)  # 156 (horizontal)
-INNER_RADIUS_Y = int(200 * SCALE)  # 120 (vertical)
+# Ellipse radii - VERTICAL orientation (taller, not wider!)
+OUTER_RADIUS_X = int(240 * SCALE)  # 144 (horizontal - narrower)
+OUTER_RADIUS_Y = int(300 * SCALE)  # 180 (vertical - taller)
+INNER_RADIUS_X = int(200 * SCALE)  # 120 (horizontal)
+INNER_RADIUS_Y = int(260 * SCALE)  # 156 (vertical)
 
 # Waveform amplification
 AMPLITUDE_MULTIPLIER = 3.5  # Dramatic waveforms!
