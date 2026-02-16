@@ -14,12 +14,17 @@ from PIL import Image, ImageDraw
 TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
 
-# Canvas settings
+# Canvas settings - EXACT ALIGNMENT TO BACKGROUND RING
 WIDTH = 720
 HEIGHT = 720
-CENTER_X = 360
-CENTER_Y = 360
-RADIUS = 280
+
+# Background ring measurements (1200x1200) scaled to 720x720
+SCALE = 720.0 / 1200.0
+CENTER_X = int(600 * SCALE)  # 360
+CENTER_Y = int(555 * SCALE)  # 333 (NOT centered vertically!)
+OUTER_RADIUS = int(240 * SCALE)  # 144
+INNER_RADIUS = int(200 * SCALE)  # 120
+
 FPS = 12
 
 # Video settings
@@ -74,7 +79,6 @@ def extract_audio_samples(audio_path, target_fps=12):
     ], capture_output=True)
     
     # Read WAV file with numpy
-    # Simple approach: read raw PCM data
     cmd = [
         'ffmpeg', '-i', wav_path,
         '-f', 's16le',  # 16-bit signed little-endian PCM
@@ -125,11 +129,13 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
     """
     Draw a single circular waveform frame with clipping detection.
     Gold for normal audio, red for clipping (amplitude > 0.9).
+    ALIGNED TO EXACT BACKGROUND RING COORDINATES.
     """
     img = Image.new('RGBA', (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     num_samples = len(amplitudes)
+    ring_thickness = OUTER_RADIUS - INNER_RADIUS  # 24px
     
     for i in range(num_samples):
         angle = (i / num_samples) * 2 * math.pi
@@ -141,16 +147,15 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
         else:
             color = (255, 215, 0, 255)  # Gold
         
-        # Scale amplitude to pixel length
-        line_length = amplitude * 50
+        # Scale amplitude to ring thickness
+        line_length = amplitude * ring_thickness
         
-        # Inner circle radius
-        inner_r = RADIUS - 30
-        x1 = CENTER_X + inner_r * math.cos(angle)
-        y1 = CENTER_Y + inner_r * math.sin(angle)
+        # Inner circle (start of waveform at inner ring edge)
+        x1 = CENTER_X + INNER_RADIUS * math.cos(angle)
+        y1 = CENTER_Y + INNER_RADIUS * math.sin(angle)
         
-        # Outer point based on amplitude
-        outer_r = inner_r + line_length
+        # Outer point (extends outward based on amplitude)
+        outer_r = INNER_RADIUS + line_length
         x2 = CENTER_X + outer_r * math.cos(angle)
         y2 = CENTER_Y + outer_r * math.sin(angle)
         
@@ -243,7 +248,9 @@ def composite_final_video(frames_dir, num_frames):
     return result
 
 def main():
-    log("Starting circular waveform render test")
+    log("Starting circular waveform render test with EXACT alignment")
+    log(f"Ring center: ({CENTER_X}, {CENTER_Y})")
+    log(f"Ring radii: inner={INNER_RADIUS}, outer={OUTER_RADIUS}")
     
     if not download_test_audio():
         log("Failed to download test audio")
