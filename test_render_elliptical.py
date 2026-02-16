@@ -2,6 +2,12 @@
 """
 Test script: Generate ELLIPTICAL waveform video from real audio.
 Extracts audio samples and renders them in an ELLIPSE pattern matching the background ring.
+
+ADJUSTABLE SETTINGS (lines 27-35):
+- OUTER_RADIUS_X/Y: Size of outer ellipse edge
+- INNER_RADIUS_X/Y: Size of inner ellipse edge
+- AMPLITUDE_MULTIPLIER: How tall the waveforms are (3.5 = dramatic)
+- WAVEFORM_OPACITY: 230 = 90%, 255 = 100%, 128 = 50%
 """
 import os
 import sys
@@ -23,14 +29,17 @@ SCALE = 720.0 / 1200.0
 CENTER_X = int(600 * SCALE)  # 360
 CENTER_Y = int(555 * SCALE)  # 333
 
+# ========== ADJUSTABLE SETTINGS - TWEAK THESE! ==========
 # Ellipse radii - VERTICAL orientation (taller, not wider!)
-OUTER_RADIUS_X = int(240 * SCALE)  # 144 (horizontal - narrower)
-OUTER_RADIUS_Y = int(300 * SCALE)  # 180 (vertical - taller)
-INNER_RADIUS_X = int(200 * SCALE)  # 120 (horizontal)
-INNER_RADIUS_Y = int(260 * SCALE)  # 156 (vertical)
+OUTER_RADIUS_X = int(250 * SCALE)  # 150 (horizontal width)
+OUTER_RADIUS_Y = int(310 * SCALE)  # 186 (vertical height)
+INNER_RADIUS_X = int(210 * SCALE)  # 126 (horizontal)
+INNER_RADIUS_Y = int(270 * SCALE)  # 162 (vertical)
 
-# Waveform amplification
-AMPLITUDE_MULTIPLIER = 3.5  # Dramatic waveforms!
+# Waveform appearance
+AMPLITUDE_MULTIPLIER = 3.5  # How tall waveforms are (try 2.5-5.0)
+WAVEFORM_OPACITY = 230      # Transparency: 255=100%, 230=90%, 204=80%, 128=50%
+# =========================================================
 
 FPS = 12
 
@@ -147,11 +156,11 @@ def draw_elliptical_frame(frame_idx, amplitudes, output_path):
         angle = (i / num_samples) * 2 * math.pi
         amplitude = amplitudes[i]
         
-        # Clipping detection: red if > 0.9, gold otherwise
+        # Clipping detection with adjustable opacity
         if amplitude > 0.9:
-            color = (255, 0, 0, 255)  # Red
+            color = (255, 0, 0, WAVEFORM_OPACITY)  # Red with opacity
         else:
-            color = (255, 215, 0, 255)  # Gold
+            color = (255, 215, 0, WAVEFORM_OPACITY)  # Gold with opacity
         
         # ELLIPSE MATH: Calculate radius at this angle for inner and outer ellipses
         cos_a = math.cos(angle)
@@ -273,10 +282,12 @@ def composite_final_video(frames_dir, num_frames):
     return result
 
 def main():
-    log("🎯 ELLIPTICAL WAVEFORM RENDERER - TRUE ELLIPSE VERSION 🎯")
+    log("ELLIPTICAL WAVEFORM RENDERER - TRUE ELLIPSE VERSION")
     log(f"Ellipse center: ({CENTER_X}, {CENTER_Y})")
     log(f"Outer radii: X={OUTER_RADIUS_X}, Y={OUTER_RADIUS_Y}")
     log(f"Inner radii: X={INNER_RADIUS_X}, Y={INNER_RADIUS_Y}")
+    log(f"Amplitude multiplier: {AMPLITUDE_MULTIPLIER}x")
+    log(f"Waveform opacity: {WAVEFORM_OPACITY}/255 ({int(WAVEFORM_OPACITY/255*100)}%)")
     
     if not download_test_audio():
         log("Failed to download test audio")
@@ -292,7 +303,7 @@ def main():
     
     if os.path.exists(OUTPUT_VIDEO):
         size = os.path.getsize(OUTPUT_VIDEO)
-        log(f"✅ SUCCESS: ELLIPTICAL waveform video created ({size} bytes)")
+        log(f"SUCCESS: ELLIPTICAL waveform video created ({size} bytes)")
         log(f"Output file: {OUTPUT_VIDEO}")
     else:
         log("ERROR: Output video not created")
