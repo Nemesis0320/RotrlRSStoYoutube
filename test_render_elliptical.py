@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Test script: Generate circular waveform video from real audio.
-Extracts audio samples and renders them in a circular pattern.
+Test script: Generate ELLIPTICAL waveform video from real audio.
+Extracts audio samples and renders them in an ELLIPSE pattern matching the background ring.
 """
 import os
 import sys
@@ -14,18 +14,23 @@ from PIL import Image, ImageDraw
 TEST_AUDIO_FILE = "test_audio.mp3"
 OUTPUT_VIDEO = "test_output.mp4"
 
-# Canvas settings - EXACT ALIGNMENT TO BACKGROUND RING
+# Canvas settings - ELLIPTICAL ALIGNMENT TO BACKGROUND RING
 WIDTH = 720
 HEIGHT = 720
 
-# Background ring measurements - ADJUSTED FOR BETTER FIT
+# Background ring measurements - ELLIPSE (not circle!)
 SCALE = 720.0 / 1200.0
 CENTER_X = int(600 * SCALE)  # 360
 CENTER_Y = int(555 * SCALE)  # 333
 
-# Increased radii slightly to better match visual ring
-OUTER_RADIUS = int(260 * SCALE)  # 156 (was 144)
-INNER_RADIUS = int(200 * SCALE)  # 120 (same)
+# Ellipse radii - different for X and Y axes
+OUTER_RADIUS_X = int(300 * SCALE)  # 180 (horizontal - wider)
+OUTER_RADIUS_Y = int(240 * SCALE)  # 144 (vertical - shorter)
+INNER_RADIUS_X = int(260 * SCALE)  # 156 (horizontal)
+INNER_RADIUS_Y = int(200 * SCALE)  # 120 (vertical)
+
+# Waveform amplification
+AMPLITUDE_MULTIPLIER = 3.5  # Dramatic waveforms!
 
 FPS = 12
 
@@ -67,7 +72,7 @@ def download_test_audio():
 
 def extract_audio_samples(audio_path, target_fps=12):
     """
-    Extract audio amplitude data for circular waveform.
+    Extract audio amplitude data for elliptical waveform.
     Returns list of frames, each containing 360 amplitude values (one per degree).
     """
     log(f"Extracting audio samples from {audio_path}")
@@ -127,19 +132,16 @@ def extract_audio_samples(audio_path, target_fps=12):
     log(f"Extracted {len(frame_data)} frames with {num_angles} samples each")
     return frame_data
 
-def draw_circular_frame(frame_idx, amplitudes, output_path):
+def draw_elliptical_frame(frame_idx, amplitudes, output_path):
     """
-    Draw a single circular waveform frame with clipping detection.
+    Draw a single ELLIPTICAL waveform frame with clipping detection.
     Gold for normal audio, red for clipping (amplitude > 0.9).
+    USES ELLIPSE MATH - different radii for X and Y axes!
     """
     img = Image.new('RGBA', (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     num_samples = len(amplitudes)
-    ring_thickness = OUTER_RADIUS - INNER_RADIUS  # Base thickness
-    
-    # AMPLIFICATION FACTOR - make waveforms 3.5x bigger!
-    AMPLITUDE_MULTIPLIER = 3.5
     
     for i in range(num_samples):
         angle = (i / num_samples) * 2 * math.pi
@@ -151,43 +153,62 @@ def draw_circular_frame(frame_idx, amplitudes, output_path):
         else:
             color = (255, 215, 0, 255)  # Gold
         
+        # ELLIPSE MATH: Calculate radius at this angle for inner and outer ellipses
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        
+        # Inner ellipse radius at this angle
+        inner_r = math.sqrt(
+            (INNER_RADIUS_X * INNER_RADIUS_Y) ** 2 /
+            ((INNER_RADIUS_Y * cos_a) ** 2 + (INNER_RADIUS_X * sin_a) ** 2)
+        )
+        
+        # Outer ellipse radius at this angle
+        outer_r = math.sqrt(
+            (OUTER_RADIUS_X * OUTER_RADIUS_Y) ** 2 /
+            ((OUTER_RADIUS_Y * cos_a) ** 2 + (OUTER_RADIUS_X * sin_a) ** 2)
+        )
+        
+        # Ring thickness at this angle
+        ring_thickness = outer_r - inner_r
+        
         # Scale amplitude to ring thickness WITH MULTIPLIER
         line_length = amplitude * ring_thickness * AMPLITUDE_MULTIPLIER
         
-        # Inner circle (start of waveform at inner ring edge)
-        x1 = CENTER_X + INNER_RADIUS * math.cos(angle)
-        y1 = CENTER_Y + INNER_RADIUS * math.sin(angle)
+        # Inner ellipse point (start of waveform)
+        x1 = CENTER_X + inner_r * cos_a
+        y1 = CENTER_Y + inner_r * sin_a
         
-        # Outer point (extends outward based on amplitude)
-        outer_r = INNER_RADIUS + line_length
-        x2 = CENTER_X + outer_r * math.cos(angle)
-        y2 = CENTER_Y + outer_r * math.sin(angle)
+        # Outer point (extends radially based on amplitude)
+        final_r = inner_r + line_length
+        x2 = CENTER_X + final_r * cos_a
+        y2 = CENTER_Y + final_r * sin_a
         
-        # Draw radial line (thicker line for better visibility)
+        # Draw radial line
         draw.line([(x1, y1), (x2, y2)], fill=color, width=4)
     
     img.save(output_path)
 
-def generate_circular_waveform_video():
-    """Generate circular waveform video frames."""
-    log("Generating circular waveform frames...")
+def generate_elliptical_waveform_video():
+    """Generate elliptical waveform video frames."""
+    log("Generating ELLIPTICAL waveform frames...")
     
     # Extract audio samples
     frame_data = extract_audio_samples(TEST_AUDIO_FILE, target_fps=FPS)
     
     # Create frames directory
-    frames_dir = "circular_frames"
+    frames_dir = "elliptical_frames"
     os.makedirs(frames_dir, exist_ok=True)
     
     # Generate frames
     for idx, amplitudes in enumerate(frame_data):
         frame_path = os.path.join(frames_dir, f"frame_{idx:05d}.png")
-        draw_circular_frame(idx, amplitudes, frame_path)
+        draw_elliptical_frame(idx, amplitudes, frame_path)
         
         if idx % 50 == 0:
             log(f"Generated frame {idx}/{len(frame_data)}")
     
-    log(f"All {len(frame_data)} frames generated")
+    log(f"All {len(frame_data)} ELLIPTICAL frames generated")
     return frames_dir, len(frame_data)
 
 def composite_final_video(frames_dir, num_frames):
@@ -252,16 +273,17 @@ def composite_final_video(frames_dir, num_frames):
     return result
 
 def main():
-    log("Starting circular waveform render test with EXACT alignment")
-    log(f"Ring center: ({CENTER_X}, {CENTER_Y})")
-    log(f"Ring radii: inner={INNER_RADIUS}, outer={OUTER_RADIUS}")
+    log("🎯 ELLIPTICAL WAVEFORM RENDERER - TRUE ELLIPSE VERSION 🎯")
+    log(f"Ellipse center: ({CENTER_X}, {CENTER_Y})")
+    log(f"Outer radii: X={OUTER_RADIUS_X}, Y={OUTER_RADIUS_Y}")
+    log(f"Inner radii: X={INNER_RADIUS_X}, Y={INNER_RADIUS_Y}")
     
     if not download_test_audio():
         log("Failed to download test audio")
         sys.exit(1)
     
-    # Generate circular waveform frames
-    frames_dir, num_frames = generate_circular_waveform_video()
+    # Generate elliptical waveform frames
+    frames_dir, num_frames = generate_elliptical_waveform_video()
     
     # Composite with background and text
     if not composite_final_video(frames_dir, num_frames):
@@ -270,7 +292,7 @@ def main():
     
     if os.path.exists(OUTPUT_VIDEO):
         size = os.path.getsize(OUTPUT_VIDEO)
-        log(f"SUCCESS: Video created ({size} bytes)")
+        log(f"✅ SUCCESS: ELLIPTICAL waveform video created ({size} bytes)")
         log(f"Output file: {OUTPUT_VIDEO}")
     else:
         log("ERROR: Output video not created")
