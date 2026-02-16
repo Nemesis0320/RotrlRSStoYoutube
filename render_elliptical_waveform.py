@@ -19,15 +19,15 @@ SCALE = 720.0 / 1200.0
 CENTER_X = int(600 * SCALE)  # 360
 CENTER_Y = int(555 * SCALE)  # 333
 
-# Ellipse radii - VERTICAL orientation
-OUTER_RADIUS_X = int(250 * SCALE)  # 150 (horizontal)
-OUTER_RADIUS_Y = int(310 * SCALE)  # 186 (vertical)
-INNER_RADIUS_X = int(210 * SCALE)  # 126 (horizontal)
-INNER_RADIUS_Y = int(270 * SCALE)  # 162 (vertical)
+# Ellipse radii - VERTICAL orientation (WIDENED to touch ring edges)
+OUTER_RADIUS_X = int(260 * SCALE)  # 156 (was 150, +6px wider)
+OUTER_RADIUS_Y = int(310 * SCALE)  # 186 (vertical - keep same)
+INNER_RADIUS_X = int(220 * SCALE)  # 132 (was 126, +6px wider)
+INNER_RADIUS_Y = int(270 * SCALE)  # 162 (vertical - keep same)
 
 # Waveform appearance
-AMPLITUDE_MULTIPLIER = 3.5
-WAVEFORM_OPACITY = 230  # 90% opacity
+AMPLITUDE_MULTIPLIER = 5.0  # Increased from 3.5 for MORE DRAMATIC bars
+WAVEFORM_OPACITY = 230      # Keep 90% opacity
 
 FPS = 12
 
