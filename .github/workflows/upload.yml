@@ -27,6 +27,86 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main   # <<< NOW POINTS TO MAIN
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Decode YouTube OAuth token
+        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON_B64 }}" | base64 --decode > token.json
+
+      - name: Debug token.json
+        run: |
+          echo "----- token.json -----"
+          cat token.json
+          echo "----------------------"
+
+      - name: Run uploader (one episode per run, RAM temp)
+        env:
+          RSS_URL: ${{ secrets.RSS_URL }}
+          YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TMPDIR: /dev/shm
+        run: python3 uploader.py
+
+      - name: Write GitHub step summary
+        if: always()
+        run: |
+          if [ -f summary.txt ]; then
+            echo "### Podcast Upload Summary" >> $GITHUB_STEP_SUMMARY
+            cat summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary.txt generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Configure GitHub token
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+      - name: Commit updated uploaded.json
+        run: |
+          git add uploaded.json || true
+          git commit -m "Update uploaded episodes" || echo "No changes to commit"
+          git pushname: Upload Podcast Episodes
+
+on:
+  workflow_dispatch:
+  #schedule:
+  # - cron: "0 */2 * * *"   # Run every 2 hours
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # REQUIRED so we can push uploaded.json
+
+    steps:
+      - name: Free disk space aggressively
+        run: |
+          echo "Before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          echo "After cleanup:"
+          df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           ref: elliptical-waveform-v3   # <<< CRITICAL FIX
 
       - name: Set up Python
