@@ -3,14 +3,14 @@ name: Upload Podcast Episodes
 on:
   workflow_dispatch:
   #schedule:
-  # - cron: "0 */2 * * *"   # Run every 2 hours
+  # - cron: "0 */2 * * *"
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # REQUIRED so we can push uploaded.json
+      contents: write
 
     steps:
       - name: Free disk space aggressively
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main   # <<< CRITICAL: always use main
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -51,7 +51,7 @@ jobs:
           cat token.json
           echo "----------------------"
 
-      - name: Run uploader (one episode per run, RAM temp)
+      - name: Run uploader
         env:
           RSS_URL: ${{ secrets.RSS_URL }}
           YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
@@ -78,4 +78,4 @@ jobs:
         run: |
           git add uploaded.json || true
           git commit -m "Update uploaded episodes" || echo "No changes to commit"
-          git push origin main   # <<< CRITICAL: force push to main only
+          git push origin main
