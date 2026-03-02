@@ -215,13 +215,17 @@ def reset_daily_stats_if_needed(stats):
 
 # State files
 def load_uploaded():
-    if not os.path.exists(UPLOADED_FILE):
+    ROOT = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(ROOT, UPLOADED_FILE)
+    if not os.path.exists(path):
         return set()
-    with open(UPLOADED_FILE, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return set(json.load(f))
 
 def save_uploaded(uploaded):
-    with open(UPLOADED_FILE, "w", encoding="utf-8") as f:
+    ROOT = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(ROOT, UPLOADED_FILE)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(list(uploaded), f)
 
 # Utilities
