@@ -596,7 +596,7 @@ def render_and_upload(renderer_title, youtube_title, youtube_description, season
             return None, render_time, None, None
 
     # Determine playlist name + ID
-    playlist_name = f"Clinton's Core Classics – {season_label}"
+    playlist_name = f"Clinton's Core Classics - {season_label}"
     playlist_id = ensure_playlist(season_label)
 
     # Upload with retry logic
