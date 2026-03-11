@@ -648,12 +648,23 @@ def get_episodes(feed):
         # Parse season/episode using naming convention
         season, ep = parse_season_episode(title)
 
-        # Ignore anything that isn't a real episode
+        from html import unescape
+        clean_title = unescape(title)
+
         if season is None or ep is None:
-            log("IGNORING EPISODE WITH NO SEASON/EP:", title)
+            # SPECIAL EPISODE
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", clean_title).strip("-").lower()
+            eid = f"SPECIAL-{slug}"
+
+            log("SPECIAL:", "ID:", eid, "TITLE:", title, "URL:", url)
+
+            if not url:
+                continue
+
+            eps.append((eid, clean_title, url, None, None, description, "special"))
             continue
 
-        # Use stable episode key instead of RSS feed ID
+        # NORMAL EPISODE
         eid = f"S{season}E{ep}"
 
         log("EP:", "ID:", eid, "TITLE:", title, "URL:", url)
@@ -661,38 +672,111 @@ def get_episodes(feed):
         if not url:
             continue
 
-        # Strip leading "Season X EP Y" from the title if the feed includes it
         expected_prefix = f"Season {season} EP. {ep}"
-        from html import unescape
-        clean_title = unescape(title)
         if clean_title.startswith(expected_prefix):
             clean_title = clean_title[len(expected_prefix):].lstrip(" :-")
 
-        # Include description in the tuple
-        eps.append((eid, clean_title, url, season, ep, description))
+        eps.append((eid, clean_title, url, season, ep, description, "episode"))
 
-    # Sort by season then episode
-    eps.sort(key=lambda x: (x[3], x[4]))
+    # Sort: episodes first, then specials
+    eps.sort(key=lambda x: (x[6] != "episode", x[3] or 999, x[4] or 999))
 
-    # Debug print sorted order
-    for eid, title, url, season, ep, description in eps:
-        log("SORTED:", season, ep, title)
+    for eid, title, url, season, ep, description, kind in eps:
+        log("SORTED:", kind, season, ep, title)
 
     log("EPISODE LIST BUILT:", len(eps))
     return eps
 
 def next_episode(uploaded, episodes):
     log("NEXT EPISODE: uploaded count", len(uploaded), "episodes total", len(episodes))
-    for eid, title, url, season, ep, description in episodes:
+    for eid, title, url, season, ep, description, kind in episodes:
         log("CHECK EP:", eid, "uploaded?", eid in uploaded)
         if eid not in uploaded:
-            log("NEXT EP FOUND:", eid, f"S{season}E{ep}", title)
-            return eid, title, url, season, ep, description
-    log("NO NEW EPISODES")
-    return None, None, None, None, None, None
+            log("NEXT ITEM FOUND:", eid, kind, title)
+            return eid, title, url, season, ep, description, kind
+    log("NO NEW EPISODES OR SPECIALS")
+    return None, None, None, None, None, None, None
 
 # Main pipeline
-def process_episode(eid, title, url, season, ep, uploaded, stats, description="", episode_thumbnail_url=None):
+def process_episode(
+    eid,
+    title,
+    url,
+    season,
+    ep,
+    uploaded,
+    stats,
+    description="",
+    kind="episode",
+    episode_thumbnail_url=None
+):
+    # SPECIAL EPISODE HANDLING
+    if kind == "special":
+        log("PROCESS SPECIAL:", eid, title)
+
+        season_label = "Specials"
+
+        cleanup_files(AUDIO_FILE, PART1_AUDIO, PART2_AUDIO, PART1_VIDEO, PART2_VIDEO, FINAL_VIDEO)
+        if not download_audio(url, AUDIO_FILE):
+            stats["failures_today"] += 1
+            save_daily_stats(stats)
+            send_discord_embed("Download failed", title, 0xE74C3C)
+            log("DOWNLOAD FAILED:", url)
+            return False
+
+        from html import unescape
+        clean_title = unescape(title)
+
+        youtube_title = f"Clinton's Core Classics - {clean_title}"
+        youtube_description = clean_description(description)
+
+        vid, render_time, upload_time, dur = render_and_upload(
+            clean_title,
+            youtube_title,
+            youtube_description,
+            season_label="Specials",
+            episode_number=None
+        )
+
+        log("PROCESS SPECIAL RESULT:", "VIDEO_ID:", vid, "RENDER:", render_time, "UPLOAD:", upload_time)
+
+        if not vid:
+            stats["failures_today"] += 1
+            save_daily_stats(stats)
+            send_discord_embed("Upload failed", title, 0xE74C3C)
+            log("UPLOAD FAILED FOR SPECIAL:", eid)
+            return False
+
+        youtube_url = f"https://www.youtube.com/watch?v={vid}"
+        thumbnail_url = episode_thumbnail_url or \
+            "https://raw.githubusercontent.com/Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
+
+        send_discord_summary(
+            youtube_title,
+            "Specials",
+            "",
+            youtube_url,
+            thumbnail_url,
+            render_time,
+            upload_time
+        )
+
+        uploaded.add(eid)
+        save_uploaded(uploaded)
+        stats["episodes_uploaded_today"] += 1
+        stats["total_runtime_today"] += dur
+        save_daily_stats(stats)
+
+        send_discord_embed(
+            "Upload complete",
+            f"{title}\nDuration: {format_seconds(dur)}",
+            0x2ECC71
+        )
+
+        log("SPECIAL SUCCESS:", eid, "VIDEO_ID:", vid)
+        return True
+
+    # NORMAL EPISODE HANDLING
     log("PROCESS EP:", eid, f"S{season}E{ep}", title)
 
     season_label = f"Season {season}"
@@ -705,21 +789,17 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
         log("DOWNLOAD FAILED:", url)
         return False
 
-    # Clean title from get_episodes()
     from html import unescape
     clean_title = unescape(title)
 
-    # Canonical YouTube title (matches ticker format)
     youtube_title = f"Clinton's Core Classics - {season_label} EP {ep}: {clean_title}"
 
-    # Full YouTube description (header + RSS description)
     youtube_description = (
         f"{season_label} EP {ep} – {clean_title}\n\n"
         f"{description.strip()}"
     )
     youtube_description = clean_description(youtube_description)
 
-    # Render + upload with corrected argument order
     vid, render_time, upload_time, dur = render_and_upload(
         clean_title,
         youtube_title,
@@ -739,7 +819,6 @@ def process_episode(eid, title, url, season, ep, uploaded, stats, description=""
 
     youtube_url = f"https://www.youtube.com/watch?v={vid}"
 
-    # Episode-specific thumbnail if available; fallback otherwise.
     thumbnail_url = episode_thumbnail_url or \
         "https://raw.githubusercontent.com/Nemesis0320/RotrlRSStoYoutube/main/assets/1200x1200bf.png"
 
@@ -777,10 +856,6 @@ def write_daily_summary(stats, uploaded_count):
         f"Queue remaining: {uploaded_count}\n"
     )
     write_summary(text)
-
-# ---------------------------------------------------------
-# Health Check
-# ---------------------------------------------------------
 
 REQUIRED_FILES = [
     "uploaded.json",
@@ -841,14 +916,28 @@ def main():
         stats = reset_daily_stats_if_needed(stats)
         log("STATE:", "uploaded", len(uploaded), "stats", stats)
 
-        eid, title, url, season, ep, description = next_episode(uploaded, episodes)
+        # UPDATED: now returns kind
+        eid, title, url, season, ep, description, kind = next_episode(uploaded, episodes)
+
         if not eid:
             write_summary("No new episodes.")
             send_discord_embed("Idle", "No new episodes.")
             log("NO NEW EPISODES, EXIT")
             return
 
-        ok = process_episode(eid, title, url, season, ep, uploaded, stats, description=description)
+        # UPDATED: pass kind into process_episode
+        ok = process_episode(
+            eid,
+            title,
+            url,
+            season,
+            ep,
+            uploaded,
+            stats,
+            description=description,
+            kind=kind
+        )
+
         remaining = len([e for e in episodes if e[0] not in uploaded])
         write_daily_summary(stats, remaining)
 
